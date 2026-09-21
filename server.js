@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const express = require("express");
-const session = require("express-session");
 const crypto = require("crypto");
 const path = require("path");
 
@@ -18,6 +17,10 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
+// ==================================================
+// ENV
+// ==================================================
+
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -30,21 +33,72 @@ const APPLICATION_CHANNEL_ID =
 const RESULTS_CHANNEL_ID =
     process.env.RESULTS_CHANNEL_ID;
 
+const SESSION_SECRET =
+    process.env.SESSION_SECRET ||
+    "change-this-session-secret";
+
 const REDIRECT_URI =
     process.env.DISCORD_REDIRECT_URI ||
-    "http://localhost:" + PORT + "/auth/discord/callback";
+    `http://localhost:${PORT}/auth/discord/callback`;
 
+const IS_NETLIFY =
+    process.env.NETLIFY === "true" ||
+    !!process.env.NETLIFY_FUNCTIONS_VERSION;
 
 // ==================================================
-// DISCORD BOT
+// CONFIG CHECK
 // ==================================================
 
-const bot = new Client({
-    intents: [
-        GatewayIntentBits.Guilds
-    ]
-});
+console.log("=================================");
+console.log("PD APPLICATION CONFIG");
+console.log("=================================");
 
+console.log(
+    "CLIENT_ID:",
+    CLIENT_ID ? "OK" : "MISSING"
+);
+
+console.log(
+    "CLIENT_SECRET:",
+    CLIENT_SECRET ? "OK" : "MISSING"
+);
+
+console.log(
+    "BOT_TOKEN:",
+    BOT_TOKEN ? "OK" : "MISSING"
+);
+
+console.log(
+    "GUILD_ID:",
+    GUILD_ID ? "OK" : "MISSING"
+);
+
+console.log(
+    "APPLICATION_CHANNEL_ID:",
+    APPLICATION_CHANNEL_ID ? "OK" : "MISSING"
+);
+
+console.log(
+    "RESULTS_CHANNEL_ID:",
+    RESULTS_CHANNEL_ID ? "OK" : "MISSING"
+);
+
+console.log(
+    "SESSION_SECRET:",
+    SESSION_SECRET ? "OK" : "MISSING"
+);
+
+console.log(
+    "REDIRECT_URI:",
+    REDIRECT_URI
+);
+
+console.log(
+    "NETLIFY:",
+    IS_NETLIFY ? "YES" : "NO"
+);
+
+console.log("=================================");
 
 // ==================================================
 // EXPRESS
@@ -58,233 +112,290 @@ app.use(
     })
 );
 
-app.use(
-    session({
-        secret:
-            process.env.SESSION_SECRET ||
-            "pd-secret-change-me",
-
-        resave: false,
-
-        saveUninitialized: false,
-
-        cookie: {
-            maxAge:
-                1000 * 60 * 60 * 24
-        }
-    })
-);
-
-app.use(
-    express.static(
-        path.join(__dirname, "public")
-    )
-);
-
-
 // ==================================================
-// OAUTH STATE
+// COOKIE HELPERS
 // ==================================================
 
-const oauthStates = new Map();
+function parseCookies(req) {
 
+    const header =
+        req.headers.cookie;
 
-// ==================================================
-// DISCORD LOGIN
-// ==================================================
-
-app.get(
-    "/auth/discord",
-    (req, res) => {
-
-        const join =
-            req.query.join === "1";
-
-        const state =
-            crypto
-                .randomBytes(24)
-                .toString("hex");
-
-        oauthStates.set(
-            state,
-            {
-                join,
-                created: Date.now()
-            }
-        );
-
-        const scopes =
-            join
-                ? "identify guilds.join"
-                : "identify";
-
-        const params =
-            new URLSearchParams({
-
-                client_id:
-                    CLIENT_ID,
-
-                response_type:
-                    "code",
-
-                redirect_uri:
-                    REDIRECT_URI,
-
-                scope:
-                    scopes,
-
-                state
-            });
-
-        res.redirect(
-            "https://discord.com/oauth2/authorize?" +
-            params.toString()
-        );
+    if (!header) {
+        return {};
     }
-);
 
+    const cookies = {};
+
+    header
+        .split(";")
+        .forEach((part) => {
+
+            const index =
+                part.indexOf("=");
+
+            if (index === -1) {
+                return;
+            }
+
+            const key =
+                part
+                    .slice(0, index)
+                    .trim();
+
+            const value =
+                part
+                    .slice(index + 1)
+                    .trim();
+
+            cookies[key] =
+                decodeURIComponent(value);
+
+        });
+
+    return cookies;
+}
+
+
+function base64urlEncode(value) {
+
+    return Buffer
+        .from(value)
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=/g, "");
+
+}
+
+
+function base64urlDecode(value) {
+
+    value =
+        value
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+
+    while (
+        value.length % 4
+    ) {
+        value += "=";
+    }
+
+    return Buffer
+        .from(value, "base64")
+        .toString();
+}
+
+
+function createSignature(data) {
+
+    return crypto
+        .createHmac(
+            "sha256",
+            SESSION_SECRET
+        )
+        .update(data)
+        .digest("base64url");
+
+}
+
+
+function createSignedValue(data) {
+
+    const encoded =
+        base64urlEncode(
+            JSON.stringify(data)
+        );
+
+    const signature =
+        createSignature(encoded);
+
+    return encoded +
+        "." +
+        signature;
+
+}
+
+
+function verifySignedValue(value) {
+
+    if (!value) {
+        return null;
+    }
+
+    const parts =
+        value.split(".");
+
+    if (parts.length !== 2) {
+        return null;
+    }
+
+    const encoded =
+        parts[0];
+
+    const signature =
+        parts[1];
+
+    const expected =
+        createSignature(encoded);
+
+    try {
+
+        if (
+            !crypto.timingSafeEqual(
+                Buffer.from(signature),
+                Buffer.from(expected)
+            )
+        ) {
+            return null;
+        }
+
+    } catch {
+
+        return null;
+
+    }
+
+    try {
+
+        return JSON.parse(
+            base64urlDecode(encoded)
+        );
+
+    } catch {
+
+        return null;
+
+    }
+
+}
+
+
+function setCookie(
+    res,
+    name,
+    value,
+    maxAge
+) {
+
+    const secure =
+        IS_NETLIFY ||
+        process.env.NODE_ENV === "production";
+
+    let cookie =
+        name +
+        "=" +
+        encodeURIComponent(value) +
+        "; Path=/; HttpOnly; SameSite=Lax";
+
+    if (maxAge !== undefined) {
+
+        cookie +=
+            "; Max-Age=" +
+            Math.floor(maxAge / 1000);
+
+    }
+
+    if (secure) {
+
+        cookie +=
+            "; Secure";
+
+    }
+
+    const existing =
+        res.getHeader("Set-Cookie");
+
+    const list =
+        existing
+            ? Array.isArray(existing)
+                ? existing
+                : [existing]
+            : [];
+
+    list.push(cookie);
+
+    res.setHeader(
+        "Set-Cookie",
+        list
+    );
+
+}
+
+
+function clearCookie(
+    res,
+    name
+) {
+
+    setCookie(
+        res,
+        name,
+        "",
+        0
+    );
+
+}
 
 // ==================================================
-// DISCORD OAUTH CALLBACK
+// USER COOKIE
 // ==================================================
 
-app.get(
-    "/auth/discord/callback",
-    async (req, res) => {
+function getLoggedUser(req) {
 
-        try {
+    const cookies =
+        parseCookies(req);
 
-            const {
-                code,
-                state
-            } = req.query;
+    const sessionCookie =
+        cookies.pd_session;
 
+    if (!sessionCookie) {
+        return null;
+    }
 
-            if (!code || !state) {
+    const session =
+        verifySignedValue(
+            sessionCookie
+        );
 
-                return res
-                    .status(400)
-                    .send(
-                        "Invalid OAuth request."
-                    );
-            }
+    if (!session) {
+        return null;
+    }
 
+    if (
+        !session.user ||
+        !session.created
+    ) {
+        return null;
+    }
 
-            const savedState =
-                oauthStates.get(state);
+    // 24 hours
+    const maxAge =
+        1000 * 60 * 60 * 24;
 
+    if (
+        Date.now() -
+        session.created >
+        maxAge
+    ) {
+        return null;
+    }
 
-            if (!savedState) {
+    return session.user;
 
-                return res
-                    .status(400)
-                    .send(
-                        "Invalid or expired state."
-                    );
-            }
-
-
-            oauthStates.delete(state);
-
-
-            // ==========================================
-            // EXCHANGE CODE
-            // ==========================================
-
-            const tokenResponse =
-                await fetch(
-                    "https://discord.com/api/oauth2/token",
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type":
-                                "application/x-www-form-urlencoded"
-                        },
-
-                        body:
-                            new URLSearchParams({
-
-                                client_id:
-                                    CLIENT_ID,
-
-                                client_secret:
-                                    CLIENT_SECRET,
-
-                                grant_type:
-                                    "authorization_code",
-
-                                code,
-
-                                redirect_uri:
-                                    REDIRECT_URI
-                            })
-                    }
-                );
+}
 
 
-            const tokenData =
-                await tokenResponse.json();
+function saveLoggedUser(
+    res,
+    user
+) {
 
+    const value =
+        createSignedValue({
 
-            if (!tokenData.access_token) {
-
-                console.log(
-                    "OAuth Error:",
-                    tokenData
-                );
-
-                return res
-                    .status(400)
-                    .send(
-                        "Discord OAuth failed."
-                    );
-            }
-
-
-            // ==========================================
-            // GET DISCORD USER
-            // ==========================================
-
-            const userResponse =
-                await fetch(
-                    "https://discord.com/api/users/@me",
-                    {
-                        headers: {
-
-                            Authorization:
-                                "Bearer " +
-                                tokenData.access_token
-
-                        }
-                    }
-                );
-
-
-            const user =
-                await userResponse.json();
-
-
-            if (!user.id) {
-
-                console.log(
-                    "Discord User Error:",
-                    user
-                );
-
-                return res
-                    .status(400)
-                    .send(
-                        "Unable to get Discord user."
-                    );
-            }
-
-
-            // ==========================================
-            // SAVE SESSION
-            // ==========================================
-
-            req.session.user = {
+            user: {
 
                 id:
                     user.id,
@@ -297,12 +408,502 @@ app.get(
 
                 avatar:
                     user.avatar
-            };
 
+            },
 
-            // ==========================================
-            // JOIN DISCORD SERVER
-            // ==========================================
+            created:
+                Date.now()
+
+        });
+
+    setCookie(
+        res,
+        "pd_session",
+        value,
+        1000 * 60 * 60 * 24
+    );
+
+}
+
+// ==================================================
+// DISCORD BOT
+// ==================================================
+
+const bot = new Client({
+
+    intents: [
+        GatewayIntentBits.Guilds
+    ]
+
+});
+
+// ==================================================
+// STATIC WEBSITE
+// ==================================================
+
+app.use(
+    express.static(
+        path.join(
+            __dirname,
+            "public"
+        )
+    )
+);
+
+// ==================================================
+// DISCORD LOGIN
+// ==================================================
+
+app.get(
+    "/auth/discord",
+    (req, res) => {
+
+        try {
+
+            if (!CLIENT_ID) {
+
+                return res
+                    .status(500)
+                    .send(
+                        "DISCORD_CLIENT_ID is missing."
+                    );
+
+            }
+
+            if (!CLIENT_SECRET) {
+
+                return res
+                    .status(500)
+                    .send(
+                        "DISCORD_CLIENT_SECRET is missing."
+                    );
+
+            }
+
+            if (!REDIRECT_URI) {
+
+                return res
+                    .status(500)
+                    .send(
+                        "DISCORD_REDIRECT_URI is missing."
+                    );
+
+            }
+
+            // ==================================================
+            // CREATE STATE
+            // ==================================================
+
+            const state =
+                crypto
+                    .randomBytes(32)
+                    .toString("hex");
+
+            const join =
+                req.query.join === "1";
+
+            const stateValue =
+                createSignedValue({
+
+                    state,
+
+                    join,
+
+                    created:
+                        Date.now()
+
+                });
+
+            setCookie(
+                res,
+                "pd_oauth_state",
+                stateValue,
+                10 * 60 * 1000
+            );
+
+            // ==================================================
+            // DISCORD OAUTH
+            // ==================================================
+
+            const params =
+                new URLSearchParams();
+
+            params.set(
+                "client_id",
+                String(CLIENT_ID)
+            );
+
+            params.set(
+                "response_type",
+                "code"
+            );
+
+            params.set(
+                "redirect_uri",
+                String(REDIRECT_URI)
+            );
+
+            params.set(
+                "scope",
+                join
+                    ? "identify guilds.join"
+                    : "identify"
+            );
+
+            params.set(
+                "state",
+                state
+            );
+
+            const discordUrl =
+                "https://discord.com/oauth2/authorize?" +
+                params.toString();
+
+            console.log(
+                "================================="
+            );
+
+            console.log(
+                "DISCORD OAUTH LOGIN"
+            );
+
+            console.log(
+                "CLIENT_ID:",
+                CLIENT_ID
+            );
+
+            console.log(
+                "REDIRECT_URI:",
+                REDIRECT_URI
+            );
+
+            console.log(
+                "SCOPE:",
+                join
+                    ? "identify guilds.join"
+                    : "identify"
+            );
+
+            console.log(
+                "STATE CREATED: OK"
+            );
+
+            console.log(
+                "================================="
+            );
+
+            return res.redirect(
+                discordUrl
+            );
+
+        } catch (error) {
+
+            console.error(
+                "OAuth start error:",
+                error
+            );
+
+            return res
+                .status(500)
+                .send(
+                    "Unable to start Discord login."
+                );
+
+        }
+
+    }
+);
+
+// ==================================================
+// DISCORD OAUTH CALLBACK
+// ==================================================
+
+app.get(
+    "/auth/discord/callback",
+    async (req, res) => {
+
+        try {
+
+            const code =
+                req.query.code;
+
+            const state =
+                req.query.state;
+
+            const error =
+                req.query.error;
+
+            // ==================================================
+            // DISCORD ERROR
+            // ==================================================
+
+            if (error) {
+
+                console.error(
+                    "Discord OAuth returned error:",
+                    error
+                );
+
+                clearCookie(
+                    res,
+                    "pd_oauth_state"
+                );
+
+                return res
+                    .status(400)
+                    .send(
+                        "Discord authentication was cancelled."
+                    );
+
+            }
+
+            // ==================================================
+            // CHECK CODE / STATE
+            // ==================================================
+
+            if (
+                !code ||
+                !state
+            ) {
+
+                return res
+                    .status(400)
+                    .send(
+                        "Invalid OAuth request."
+                    );
+
+            }
+
+            // ==================================================
+            // READ STATE COOKIE
+            // ==================================================
+
+            const cookies =
+                parseCookies(req);
+
+            const savedState =
+                verifySignedValue(
+                    cookies.pd_oauth_state
+                );
+
+            if (!savedState) {
+
+                console.error(
+                    "OAuth state cookie missing or invalid."
+                );
+
+                return res
+                    .status(400)
+                    .send(
+                        "Invalid or expired OAuth state."
+                    );
+
+            }
+
+            // ==================================================
+            // CHECK STATE
+            // ==================================================
+
+            if (
+                savedState.state !==
+                state
+            ) {
+
+                console.error(
+                    "OAuth state mismatch."
+                );
+
+                return res
+                    .status(400)
+                    .send(
+                        "Invalid OAuth state."
+                    );
+
+            }
+
+            // ==================================================
+            // CHECK EXPIRATION
+            // ==================================================
+
+            if (
+                !savedState.created ||
+                Date.now() -
+                savedState.created >
+                10 * 60 * 1000
+            ) {
+
+                clearCookie(
+                    res,
+                    "pd_oauth_state"
+                );
+
+                return res
+                    .status(400)
+                    .send(
+                        "OAuth state expired."
+                    );
+
+            }
+
+            // State used successfully
+            clearCookie(
+                res,
+                "pd_oauth_state"
+            );
+
+            // ==================================================
+            // EXCHANGE CODE FOR TOKEN
+            // ==================================================
+
+            const tokenParams =
+                new URLSearchParams();
+
+            tokenParams.set(
+                "client_id",
+                String(CLIENT_ID)
+            );
+
+            tokenParams.set(
+                "client_secret",
+                String(CLIENT_SECRET)
+            );
+
+            tokenParams.set(
+                "grant_type",
+                "authorization_code"
+            );
+
+            tokenParams.set(
+                "code",
+                String(code)
+            );
+
+            tokenParams.set(
+                "redirect_uri",
+                String(REDIRECT_URI)
+            );
+
+            const tokenResponse =
+                await fetch(
+                    "https://discord.com/api/oauth2/token",
+                    {
+
+                        method: "POST",
+
+                        headers: {
+
+                            "Content-Type":
+                                "application/x-www-form-urlencoded"
+
+                        },
+
+                        body:
+                            tokenParams.toString()
+
+                    }
+                );
+
+            const tokenText =
+                await tokenResponse.text();
+
+            let tokenData;
+
+            try {
+
+                tokenData =
+                    JSON.parse(
+                        tokenText
+                    );
+
+            } catch {
+
+                tokenData = {
+                    raw: tokenText
+                };
+
+            }
+
+            console.log(
+                "Discord token response:",
+                tokenResponse.status
+            );
+
+            if (
+                !tokenResponse.ok ||
+                !tokenData.access_token
+            ) {
+
+                console.error(
+                    "OAuth token error:",
+                    tokenData
+                );
+
+                return res
+                    .status(400)
+                    .send(
+                        "Discord OAuth failed."
+                    );
+
+            }
+
+            // ==================================================
+            // GET DISCORD USER
+            // ==================================================
+
+            const userResponse =
+                await fetch(
+                    "https://discord.com/api/users/@me",
+                    {
+
+                        headers: {
+
+                            Authorization:
+                                "Bearer " +
+                                tokenData.access_token
+
+                        }
+
+                    }
+                );
+
+            const user =
+                await userResponse.json();
+
+            if (
+                !userResponse.ok ||
+                !user.id
+            ) {
+
+                console.error(
+                    "Discord user error:",
+                    user
+                );
+
+                return res
+                    .status(400)
+                    .send(
+                        "Unable to get Discord user."
+                    );
+
+            }
+
+            // ==================================================
+            // SAVE USER IN SIGNED COOKIE
+            // ==================================================
+
+            saveLoggedUser(
+                res,
+                user
+            );
+
+            console.log(
+                "Discord user logged in:",
+                user.username
+            );
+
+            // ==================================================
+            // JOIN SERVER
+            // ==================================================
 
             if (
                 savedState.join &&
@@ -312,75 +913,106 @@ app.get(
                 )
             ) {
 
-                const joinResponse =
-                    await fetch(
-                        "https://discord.com/api/guilds/" +
-                        GUILD_ID +
-                        "/members/" +
-                        user.id,
-                        {
-                            method: "PUT",
+                if (
+                    GUILD_ID &&
+                    BOT_TOKEN
+                ) {
 
-                            headers: {
+                    try {
 
-                                Authorization:
-                                    "Bot " +
-                                    BOT_TOKEN,
+                        const joinResponse =
+                            await fetch(
 
-                                "Content-Type":
-                                    "application/json"
-                            },
+                                "https://discord.com/api/guilds/" +
+                                GUILD_ID +
+                                "/members/" +
+                                user.id,
 
-                            body:
-                                JSON.stringify({
+                                {
 
-                                    access_token:
-                                        tokenData.access_token
+                                    method: "PUT",
 
-                                })
+                                    headers: {
+
+                                        Authorization:
+                                            "Bot " +
+                                            BOT_TOKEN,
+
+                                        "Content-Type":
+                                            "application/json"
+
+                                    },
+
+                                    body:
+                                        JSON.stringify({
+
+                                            access_token:
+                                                tokenData.access_token
+
+                                        })
+
+                                    }
+
+                            );
+
+                        if (
+                            !joinResponse.ok
+                        ) {
+
+                            const errorText =
+                                await joinResponse.text();
+
+                            console.error(
+                                "Guild join error:",
+                                joinResponse.status,
+                                errorText
+                            );
+
+                        } else {
+
+                            console.log(
+                                user.username +
+                                " joined the Discord server."
+                            );
+
                         }
-                    );
 
+                    } catch (joinError) {
 
-                if (!joinResponse.ok) {
+                        console.error(
+                            "Guild join request error:",
+                            joinError
+                        );
 
-                    const errorText =
-                        await joinResponse.text();
+                    }
 
-                    console.log(
-                        "Guild join error:",
-                        joinResponse.status,
-                        errorText
-                    );
-
-                } else {
-
-                    console.log(
-                        user.username +
-                        " joined the Discord server."
-                    );
                 }
+
             }
 
+            // ==================================================
+            // SUCCESS
+            // ==================================================
 
-            res.redirect("/");
+            return res.redirect("/");
 
         } catch (error) {
 
             console.error(
-                "OAuth Error:",
+                "OAuth callback error:",
                 error
             );
 
-            res
+            return res
                 .status(500)
                 .send(
                     "Something went wrong with Discord authentication."
                 );
+
         }
+
     }
 );
-
 
 // ==================================================
 // CURRENT USER
@@ -390,24 +1022,29 @@ app.get(
     "/api/me",
     (req, res) => {
 
-        if (!req.session.user) {
+        const user =
+            getLoggedUser(req);
+
+        if (!user) {
 
             return res.json({
+
                 loggedIn: false
+
             });
+
         }
 
-
-        res.json({
+        return res.json({
 
             loggedIn: true,
 
-            user:
-                req.session.user
+            user
+
         });
+
     }
 );
-
 
 // ==================================================
 // LOGOUT
@@ -417,16 +1054,17 @@ app.get(
     "/logout",
     (req, res) => {
 
-        req.session.destroy(
-            () => {
-
-                res.redirect("/");
-
-            }
+        clearCookie(
+            res,
+            "pd_session"
         );
+
+        return res.redirect(
+            "/"
+        );
+
     }
 );
-
 
 // ==================================================
 // PD QUESTIONS
@@ -484,7 +1122,6 @@ const questions = [
 
 ];
 
-
 // ==================================================
 // SUBMIT APPLICATION
 // ==================================================
@@ -495,11 +1132,14 @@ app.post(
 
         try {
 
-            // ==========================================
+            // ==================================================
             // CHECK LOGIN
-            // ==========================================
+            // ==================================================
 
-            if (!req.session.user) {
+            const user =
+                getLoggedUser(req);
+
+            if (!user) {
 
                 return res
                     .status(401)
@@ -511,31 +1151,21 @@ app.post(
                             "Lezem ta3mel Login with Discord."
 
                     });
+
             }
-
-
-            const user =
-                req.session.user;
-
-
-            // ==========================================
-            // GET ANSWERS
-            // ==========================================
 
             const answers =
                 req.body.answers ||
                 req.body;
-
 
             console.log(
                 "Application received from:",
                 user.username
             );
 
-
-            // ==========================================
-            // CHECK ALL QUESTIONS
-            // ==========================================
+            // ==================================================
+            // CHECK QUESTIONS
+            // ==================================================
 
             for (
                 let i = 1;
@@ -545,7 +1175,6 @@ app.post(
 
                 const answer =
                     answers["q" + i];
-
 
                 if (
                     !answer ||
@@ -565,31 +1194,46 @@ app.post(
                                 "."
 
                         });
+
                 }
+
             }
 
+            // ==================================================
+            // CHECK BOT
+            // ==================================================
 
-            // ==========================================
+            if (!bot.isReady()) {
+
+                return res
+                    .status(503)
+                    .json({
+
+                        success: false,
+
+                        message:
+                            "Discord bot is not ready."
+
+                    });
+
+            }
+
+            // ==================================================
             // GET APPLICATION CHANNEL
-            // ==========================================
+            // ==================================================
 
             const channel =
                 await bot.channels.fetch(
                     APPLICATION_CHANNEL_ID
                 );
 
-
             if (!channel) {
 
                 throw new Error(
                     "Application channel not found."
                 );
+
             }
-
-
-            // ==========================================
-            // CHECK CHANNEL TYPE
-            // ==========================================
 
             if (
                 !channel.isTextBased()
@@ -598,12 +1242,12 @@ app.post(
                 throw new Error(
                     "Application channel is not a text channel."
                 );
+
             }
 
-
-            // ==========================================
+            // ==================================================
             // CREATE EMBED
-            // ==========================================
+            // ==================================================
 
             const embed =
                 new EmbedBuilder()
@@ -623,7 +1267,7 @@ app.post(
                             user.username
                         ) +
 
-                        "**\n" +
+                        "**\n\n" +
 
                         "🆔 Discord ID: **" +
                         user.id +
@@ -637,10 +1281,9 @@ app.post(
 
                     .setTimestamp();
 
-
-            // ==========================================
+            // ==================================================
             // AVATAR
-            // ==========================================
+            // ==================================================
 
             if (user.avatar) {
 
@@ -653,12 +1296,12 @@ app.post(
                     ".png"
 
                 );
+
             }
 
-
-            // ==========================================
-            // ADD QUESTIONS
-            // ==========================================
+            // ==================================================
+            // QUESTIONS
+            // ==================================================
 
             questions.forEach(
                 (
@@ -679,7 +1322,6 @@ app.post(
                                 1024
                             );
 
-
                     embed.addFields({
 
                         name:
@@ -698,10 +1340,9 @@ app.post(
                 }
             );
 
-
-            // ==========================================
+            // ==================================================
             // BUTTONS
-            // ==========================================
+            // ==================================================
 
             const buttons =
                 new ActionRowBuilder()
@@ -726,7 +1367,6 @@ app.post(
                                 ButtonStyle.Success
                             ),
 
-
                         new ButtonBuilder()
 
                             .setCustomId(
@@ -748,10 +1388,9 @@ app.post(
 
                     );
 
-
-            // ==========================================
-            // SEND APPLICATION TO DISCORD
-            // ==========================================
+            // ==================================================
+            // SEND APPLICATION
+            // ==================================================
 
             const sentMessage =
                 await channel.send({
@@ -766,7 +1405,6 @@ app.post(
 
                 });
 
-
             console.log(
                 "✅ PD application submitted by " +
                 user.username +
@@ -775,12 +1413,10 @@ app.post(
                 ")"
             );
 
-
             console.log(
-                "Discord message ID: " +
+                "Discord message ID:",
                 sentMessage.id
             );
-
 
             return res.json({
 
@@ -809,24 +1445,25 @@ app.post(
                         "Application failed."
 
                 });
+
         }
 
     }
 );
 
-
 // ==================================================
-// DISCORD BUTTON INTERACTIONS
+// BUTTON INTERACTIONS
 // ==================================================
 
 bot.on(
     "interactionCreate",
     async (interaction) => {
 
-        if (!interaction.isButton()) {
+        if (
+            !interaction.isButton()
+        ) {
             return;
         }
-
 
         if (
             !interaction.customId.startsWith(
@@ -840,7 +1477,6 @@ bot.on(
             return;
         }
 
-
         try {
 
             const accepted =
@@ -848,20 +1484,17 @@ bot.on(
                     "pd_accept:"
                 );
 
-
             const applicantId =
                 interaction.customId.split(":")[1];
 
-
-            // ==========================================
+            // ==================================================
             // RESULTS CHANNEL
-            // ==========================================
+            // ==================================================
 
             const resultChannel =
                 await bot.channels.fetch(
                     RESULTS_CHANNEL_ID
                 );
-
 
             if (!resultChannel) {
 
@@ -873,12 +1506,12 @@ bot.on(
                     ephemeral: true
 
                 });
+
             }
 
-
-            // ==========================================
-            // GET APPLICANT
-            // ==========================================
+            // ==================================================
+            // APPLICANT
+            // ==================================================
 
             const applicant =
                 await bot.users.fetch(
@@ -886,7 +1519,6 @@ bot.on(
                 ).catch(
                     () => null
                 );
-
 
             const applicantName =
                 applicant
@@ -896,10 +1528,9 @@ bot.on(
                       ")"
                     : applicantId;
 
-
-            // ==========================================
-            // RESULT MESSAGE
-            // ==========================================
+            // ==================================================
+            // RESULT
+            // ==================================================
 
             const resultMessage =
                 accepted
@@ -912,15 +1543,13 @@ bot.on(
                       "👤 Applicant: " +
                       applicantName;
 
-
             await resultChannel.send(
                 resultMessage
             );
 
-
-            // ==========================================
-            // UPDATE ORIGINAL MESSAGE
-            // ==========================================
+            // ==================================================
+            // UPDATE BUTTON MESSAGE
+            // ==================================================
 
             await interaction.update({
 
@@ -933,7 +1562,6 @@ bot.on(
 
             });
 
-
         } catch (error) {
 
             console.error(
@@ -941,8 +1569,10 @@ bot.on(
                 error
             );
 
-
-            if (!interaction.replied) {
+            if (
+                !interaction.replied &&
+                !interaction.deferred
+            ) {
 
                 await interaction.reply({
 
@@ -954,13 +1584,14 @@ bot.on(
                 });
 
             }
+
         }
+
     }
 );
 
-
 // ==================================================
-// START WEBSITE
+// START WEBSITE LOCALLY
 // ==================================================
 
 if (
@@ -978,8 +1609,8 @@ if (
 
         }
     );
-}
 
+}
 
 // ==================================================
 // EXPORT APP
@@ -987,38 +1618,70 @@ if (
 
 module.exports = app;
 
-
 // ==================================================
-// START DISCORD BOT
+// DISCORD BOT
+// ==================================================
+//
+// IMPORTANT:
+// On Netlify, a Discord.js persistent bot should NOT
+// be kept alive inside the serverless function.
+//
+// So we only start the bot when running locally.
+//
 // ==================================================
 
-bot.login(
-    BOT_TOKEN
-)
-.then(
-    () => {
+if (
+    BOT_TOKEN &&
+    !IS_NETLIFY
+) {
 
-        console.log(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    bot.login(
+        BOT_TOKEN
+    )
+        .then(
+            () => {
+
+                console.log(
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                );
+
+                console.log(
+                    "🤖 PD APPLICATION BOT"
+                );
+
+                console.log(
+                    "✅ Discord bot connected"
+                );
+
+                console.log(
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                );
+
+            }
+        )
+        .catch(
+            (error) => {
+
+                console.error(
+                    "❌ Discord bot login failed:",
+                    error
+                );
+
+            }
         );
 
-        console.log(
-            "🤖 PD APPLICATION BOT"
-        );
+} else if (
+    IS_NETLIFY
+) {
 
-        console.log(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        );
+    console.log(
+        "☁️ Netlify mode: Discord bot login disabled."
+    );
 
-    }
-)
-.catch(
-    (error) => {
+} else {
 
-        console.error(
-            "❌ Discord bot login failed:",
-            error
-        );
+    console.error(
+        "❌ DISCORD_BOT_TOKEN is missing."
+    );
 
-    }
-);
+}
