@@ -1,0 +1,627 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    min-height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #05070c;
+    color: white;
+    overflow-x: hidden;
+}
+
+
+/* =========================
+   BACKGROUND
+========================= */
+
+.background {
+    position: fixed;
+    inset: 0;
+
+    background-image:
+        linear-gradient(
+            rgba(2, 6, 15, 0.35),
+            rgba(2, 6, 15, 0.55)
+        ),
+        url("https://cdn.discordapp.com/attachments/1551682173185302668/1551682744768266251/IMG_3960.png?ex=6ab2dcab&is=6ab18b2b&hm=1d2aaec93bc1f012c8d1ffb81f18a3ac50315f64e284fad779f2dcc1fe9d9b14&");
+
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+
+    z-index: -10;
+}
+
+
+/* =========================
+   SMALL IMAGE TOP LEFT
+========================= */
+
+.top-left-image {
+    position: fixed;
+
+    top: 20px;
+    left: 25px;
+
+    width: 85px;
+    height: 85px;
+
+    object-fit: cover;
+
+    border-radius: 18px;
+
+    border: 2px solid rgba(255, 255, 255, 0.25);
+
+    box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.45);
+
+    z-index: 9999;
+
+    transition:
+        transform 0.2s,
+        box-shadow 0.2s;
+}
+
+.top-left-image:hover {
+    transform: scale(1.05);
+
+    box-shadow:
+        0 10px 35px rgba(0, 0, 0, 0.6);
+}
+
+
+/* =========================
+   DISCORD USER TOP RIGHT
+========================= */
+
+.discord-user {
+    position: fixed;
+
+    top: 20px;
+    right: 25px;
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 8px 12px;
+
+    background:
+        rgba(10, 15, 25, 0.88);
+
+    border:
+        1px solid
+        rgba(80, 150, 255, 0.35);
+
+    border-radius: 14px;
+
+    backdrop-filter: blur(12px);
+
+    box-shadow:
+        0 8px 30px
+        rgba(0, 0, 0, 0.35);
+
+    z-index: 9999;
+}
+
+.discord-user img {
+    width: 42px;
+    height: 42px;
+
+    border-radius: 50%;
+
+    object-fit: cover;
+
+    border:
+        2px solid
+        #5865f2;
+}
+
+.discord-user-info {
+    display: flex;
+
+    flex-direction: column;
+
+    min-width: 100px;
+}
+
+.discord-user-info span {
+    color: white;
+
+    font-size: 14px;
+
+    font-weight: 700;
+
+    white-space: nowrap;
+
+    max-width: 150px;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+}
+
+.discord-user-info small {
+    color: #8f9bb3;
+
+    font-size: 11px;
+}
+
+.logout-btn {
+    padding: 7px 10px;
+
+    color: white;
+
+    text-decoration: none;
+
+    font-size: 12px;
+
+    border-radius: 8px;
+
+    background:
+        rgba(255, 70, 70, 0.15);
+
+    border:
+        1px solid
+        rgba(255, 70, 70, 0.3);
+
+    transition: 0.2s;
+}
+
+.logout-btn:hover {
+    background:
+        rgba(255, 70, 70, 0.3);
+
+    transform: translateY(-1px);
+}
+
+
+/* =========================
+   MAIN CONTAINER
+========================= */
+
+.container {
+    width: 100%;
+
+    min-height: 100vh;
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: center;
+
+    padding:
+        120px
+        20px
+        60px;
+}
+
+
+/* =========================
+   MAIN CARD
+========================= */
+
+.card {
+    width: min(600px, 100%);
+
+    padding: 45px 35px;
+
+    text-align: center;
+
+    background:
+        rgba(8, 13, 25, 0.72);
+
+    border:
+        1px solid
+        rgba(100, 160, 255, 0.25);
+
+    border-radius: 24px;
+
+    backdrop-filter: blur(16px);
+
+    box-shadow:
+        0 25px 80px
+        rgba(0, 0, 0, 0.45);
+}
+
+
+/* =========================
+   LOGO
+========================= */
+
+.logo {
+    width: 85px;
+    height: 85px;
+
+    margin:
+        0 auto 20px;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background:
+        linear-gradient(
+            135deg,
+            #2563eb,
+            #1d4ed8
+        );
+
+    border:
+        2px solid
+        rgba(255, 255, 255, 0.2);
+
+    box-shadow:
+        0 0 35px
+        rgba(37, 99, 235, 0.4);
+
+    font-size: 25px;
+
+    font-weight: 900;
+}
+
+h1 {
+    font-size: 32px;
+
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    color: #9ba8c0;
+
+    margin-bottom: 30px;
+}
+
+
+/* =========================
+   BUTTONS
+========================= */
+
+.main-buttons {
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 14px;
+}
+
+.btn {
+    width: 100%;
+
+    min-height: 52px;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    gap: 10px;
+
+    border: none;
+
+    border-radius: 12px;
+
+    color: white;
+
+    font-size: 15px;
+
+    font-weight: 700;
+
+    text-decoration: none;
+
+    cursor: pointer;
+
+    transition:
+        transform 0.2s,
+        box-shadow 0.2s,
+        background 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+.discord-btn {
+    background: #5865f2;
+
+    box-shadow:
+        0 8px 25px
+        rgba(88, 101, 242, 0.25);
+}
+
+.discord-btn:hover {
+    background: #4752c4;
+}
+
+.server-btn {
+    background:
+        rgba(255, 255, 255, 0.08);
+
+    border:
+        1px solid
+        rgba(255, 255, 255, 0.1);
+}
+
+.server-btn:hover {
+    background:
+        rgba(255, 255, 255, 0.13);
+}
+
+.apply-btn {
+    background:
+        linear-gradient(
+            135deg,
+            #2563eb,
+            #1d4ed8
+        );
+}
+
+.apply-btn:hover {
+    box-shadow:
+        0 10px 30px
+        rgba(37, 99, 235, 0.3);
+}
+
+
+/* =========================
+   APPLICATION
+========================= */
+
+.application {
+    width: min(850px, 100%);
+
+    margin-top: 30px;
+}
+
+.application-card {
+    padding: 35px;
+
+    background:
+        rgba(7, 12, 23, 0.88);
+
+    border:
+        1px solid
+        rgba(100, 160, 255, 0.22);
+
+    border-radius: 22px;
+
+    backdrop-filter: blur(18px);
+
+    box-shadow:
+        0 25px 80px
+        rgba(0, 0, 0, 0.5);
+}
+
+.application-header {
+    margin-bottom: 30px;
+}
+
+.application-header h2 {
+    font-size: 28px;
+
+    margin-bottom: 8px;
+}
+
+.application-header p {
+    color: #8f9bb3;
+}
+
+
+/* =========================
+   QUESTIONS
+========================= */
+
+.question {
+    margin-bottom: 22px;
+}
+
+.question label {
+    display: block;
+
+    margin-bottom: 9px;
+
+    color: #e9eefc;
+
+    font-size: 14px;
+
+    font-weight: 700;
+}
+
+.question textarea {
+    width: 100%;
+
+    min-height: 95px;
+
+    resize: vertical;
+
+    padding: 14px;
+
+    border-radius: 11px;
+
+    border:
+        1px solid
+        rgba(120, 150, 200, 0.2);
+
+    outline: none;
+
+    background:
+        rgba(0, 0, 0, 0.28);
+
+    color: white;
+
+    font-family: inherit;
+
+    font-size: 14px;
+
+    transition:
+        border 0.2s,
+        box-shadow 0.2s;
+}
+
+.question textarea:focus {
+    border-color:
+        rgba(88, 140, 255, 0.7);
+
+    box-shadow:
+        0 0 0 3px
+        rgba(37, 99, 235, 0.12);
+}
+
+
+/* =========================
+   SUBMIT
+========================= */
+
+.submit-btn {
+    width: 100%;
+
+    min-height: 55px;
+
+    margin-top: 10px;
+
+    border: none;
+
+    border-radius: 12px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #2563eb,
+            #1d4ed8
+        );
+
+    color: white;
+
+    font-size: 16px;
+
+    font-weight: 800;
+
+    cursor: pointer;
+
+    transition:
+        transform 0.2s,
+        box-shadow 0.2s;
+}
+
+.submit-btn:hover {
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 12px 35px
+        rgba(37, 99, 235, 0.3);
+}
+
+.submit-btn:disabled {
+    opacity: 0.6;
+
+    cursor: not-allowed;
+
+    transform: none;
+}
+
+
+/* =========================
+   MESSAGE
+========================= */
+
+.form-message {
+    margin-top: 18px;
+
+    text-align: center;
+
+    font-size: 14px;
+}
+
+.form-message.success {
+    color: #4ade80;
+}
+
+.form-message.error {
+    color: #f87171;
+}
+
+
+/* =========================
+   HIDDEN
+========================= */
+
+.hidden {
+    display: none !important;
+}
+
+
+/* =========================
+   MOBILE
+========================= */
+
+@media (max-width: 650px) {
+
+    .container {
+        padding:
+            100px
+            12px
+            40px;
+    }
+
+    .card {
+        padding:
+            35px
+            20px;
+    }
+
+    h1 {
+        font-size: 25px;
+    }
+
+    .application-card {
+        padding: 20px;
+    }
+
+    .top-left-image {
+        top: 10px;
+        left: 10px;
+
+        width: 60px;
+        height: 60px;
+
+        border-radius: 14px;
+    }
+
+    .discord-user {
+        top: 10px;
+        right: 10px;
+
+        padding: 6px 8px;
+    }
+
+    .discord-user img {
+        width: 36px;
+        height: 36px;
+    }
+
+    .discord-user-info {
+        min-width: 80px;
+    }
+
+    .discord-user-info span {
+        max-width: 100px;
+    }
+
+    .logout-btn {
+        padding:
+            6px 8px;
+    }
+}
