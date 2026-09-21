@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>PD Application</title>
+
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+    <!-- Background -->
+    <div class="background"></div>
+
+    <!-- Discord User -->
+    <div id="discordUser" class="discord-user hidden">
+
+        <img
+            id="discordAvatar"
+            src=""
+            alt="Discord"
+        >
+
+        <div class="discord-user-info">
+            <span id="discordName">
+                User
+            </span>
+
+            <small>
+                Discord Connected
+            </small>
+        </div>
+
+        <a
+            href="/logout"
+            class="logout-btn"
+        >
+            Logout
+        </a>
+
+    </div>
+
+
+    <!-- Main -->
+    <main class="container">
+
+        <div class="card">
+
+            <div class="logo">
+                PD
+            </div>
+
+            <h1>
+                Police Department
+            </h1>
+
+            <p class="subtitle">
+                PD Application System
+            </p>
+
+
+            <!-- Buttons -->
+
+            <div class="main-buttons">
+
+                <a
+                    href="/auth/discord"
+                    class="btn discord-btn"
+                >
+                    <span>◉</span>
+                    Login with Discord
+                </a>
+
+
+                <a
+                    href="https://discord.gg/"
+                    target="_blank"
+                    class="btn server-btn"
+                >
+                    Join Discord Server
+                </a>
+
+
+                <button
+                    id="applyButton"
+                    class="btn apply-btn"
+                >
+                    Apply PD
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <!-- Application -->
+
+        <section
+            id="applicationSection"
+            class="application hidden"
+        >
+
+            <div class="application-card">
+
+                <div class="application-header">
+
+                    <h2>
+                        PD Application
+                    </h2>
+
+                    <p>
+                        Jawb 3la kol les questions bech teb3ath demande mte3ek.
+                    </p>
+
+                </div>
+
+
+                <form id="applicationForm">
+
+
+                    <!-- Question 1 -->
+
+                    <div class="question">
+
+                        <label>
+                            1. 9adech 3omrek fi denya?
+                        </label>
+
+                        <textarea
+                            name="q1"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 2 -->
+
+                    <div class="question">
+
+                        <label>
+                            2. Chnowa ta3ref 3al PD?
+                        </label>
+
+                        <textarea
+                            name="q2"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 3 -->
+
+                    <div class="question">
+
+                        <label>
+                            3. 9adech men se3a tel3eb fi nhar?
+                        </label>
+
+                        <textarea
+                            name="q3"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 4 -->
+
+                    <div class="question">
+
+                        <label>
+                            4. Chnowa bch tfidna enti fel PD?
+                        </label>
+
+                        <textarea
+                            name="q4"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 5 -->
+
+                    <div class="question">
+
+                        <label>
+                            5. 3lech 5tart el PD men kol el factions w gangs?
+                        </label>
+
+                        <textarea
+                            name="q5"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 6 -->
+
+                    <div class="question">
+
+                        <label>
+                            6. 3andek 5ebra 9bal fel PD?
+                        </label>
+
+                        <textarea
+                            name="q6"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 7 -->
+
+                    <div class="question">
+
+                        <label>
+                            7. Chnowa esmek In-Game?
+                        </label>
+
+                        <textarea
+                            name="q7"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 8 -->
+
+                    <div class="question">
+
+                        <label>
+                            8. Chnowa level mte3ek In-Game?
+                        </label>
+
+                        <textarea
+                            name="q8"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 9 -->
+
+                    <div class="question">
+
+                        <label>
+                            9. Ken t3areket enti w zamilik, chnowa bch ta3mel?
+                        </label>
+
+                        <textarea
+                            name="q9"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 10 -->
+
+                    <div class="question">
+
+                        <label>
+                            10. 9adech men 3am wala chhar 3andek tel3eb SA-MP?
+                        </label>
+
+                        <textarea
+                            name="q10"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 11 -->
+
+                    <div class="question">
+
+                        <label>
+                            11. 3lech theb tod5el lel PD?
+                        </label>
+
+                        <textarea
+                            name="q11"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 12 -->
+
+                    <div class="question">
+
+                        <label>
+                            12. Ba3ed barcha 5edma fel PD, chnowa bch ta3mel?
+                        </label>
+
+                        <textarea
+                            name="q12"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 13 -->
+
+                    <div class="question">
+
+                        <label>
+                            13. Ken wehed jek yheb ya3mel m3ak fight, chnowa bch ta3mel?
+                        </label>
+
+                        <textarea
+                            name="q13"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 14 -->
+
+                    <div class="question">
+
+                        <label>
+                            14. Ken jbetlo Tazer bech tazih, chnowa bch ta3mel?
+                        </label>
+
+                        <textarea
+                            name="q14"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 15 -->
+
+                    <div class="question">
+
+                        <label>
+                            15. Chnowa ma3neha RP?
+                        </label>
+
+                        <textarea
+                            name="q15"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 16 -->
+
+                    <div class="question">
+
+                        <label>
+                            16. Chnowa ma3neha Mass RP?
+                        </label>
+
+                        <textarea
+                            name="q16"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 17 -->
+
+                    <div class="question">
+
+                        <label>
+                            17. Chnowa ma3neha Force RP?
+                        </label>
+
+                        <textarea
+                            name="q17"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 18 -->
+
+                    <div class="question">
+
+                        <label>
+                            18. Chnowa ma3neha Team Kill?
+                        </label>
+
+                        <textarea
+                            name="q18"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 19 -->
+
+                    <div class="question">
+
+                        <label>
+                            19. Chnowa ma3neha Power Gaming (PG)?
+                        </label>
+
+                        <textarea
+                            name="q19"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 20 -->
+
+                    <div class="question">
+
+                        <label>
+                            20. Chnowa ma3neha Zero Value Of Life (ZVL)?
+                        </label>
+
+                        <textarea
+                            name="q20"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 21 -->
+
+                    <div class="question">
+
+                        <label>
+                            21. Chnowa ma3neha Vehicle Deathmatching (RVDM)?
+                        </label>
+
+                        <textarea
+                            name="q21"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 22 -->
+
+                    <div class="question">
+
+                        <label>
+                            22. Chnowa ma3neha Revenge Kill (RK)?
+                        </label>
+
+                        <textarea
+                            name="q22"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 23 -->
+
+                    <div class="question">
+
+                        <label>
+                            23. Chnowa ma3neha Combat Storing (CS)?
+                        </label>
+
+                        <textarea
+                            name="q23"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- Question 24 -->
+
+                    <div class="question">
+
+                        <label>
+                            24. Chnowa ma3neha Logging To Avoid (LTA)?
+                        </label>
+
+                        <textarea
+                            name="q24"
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <button
+                        type="submit"
+                        class="submit-btn"
+                    >
+                        Submit Application
+                    </button>
+
+
+                    <div
+                        id="formMessage"
+                        class="form-message"
+                    ></div>
+
+                </form>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <script src="/app.js"></script>
+
+</body>
+</html>
