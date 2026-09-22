@@ -14,7 +14,6 @@ const {
 } = require("discord.js");
 
 const app = express();
-
 const PORT = process.env.PORT || 3000;
 
 // ==================================================
@@ -40,7 +39,6 @@ const REDIRECT_URI =
     process.env.DISCORD_REDIRECT_URI ||
     `http://localhost:${PORT}/auth/discord/callback`;
 
-// Render = production
 const IS_PRODUCTION =
     process.env.NODE_ENV === "production" ||
     !!process.env.RENDER;
@@ -227,7 +225,8 @@ function verifySignedValue(value) {
         return null;
     }
 
-    const parts = String(value).split(".");
+    const parts =
+        String(value).split(".");
 
     if (parts.length !== 2) {
         return null;
@@ -282,10 +281,11 @@ function setCookie(
     res,
     name,
     value,
-    maxAge
+    maxAge,
+    sameSite = "Lax"
 ) {
     let cookie =
-        `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax`;
+        `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=${sameSite}`;
 
     if (maxAge !== undefined) {
         cookie +=
@@ -379,13 +379,18 @@ function saveLoggedUser(res, user) {
     const sessionData = {
         user: {
             id: user.id,
-            username: user.username,
+
+            username:
+                user.username,
+
             global_name:
                 user.global_name ||
                 user.username,
+
             avatar:
                 user.avatar || null
         },
+
         created: Date.now()
     };
 
@@ -463,11 +468,14 @@ app.get(
                     stateData
                 );
 
+            // OAuth state cookie
+            // SameSite=None is important for OAuth callback
             setCookie(
                 res,
                 "pd_oauth_state",
                 stateCookie,
-                10 * 60 * 1000
+                10 * 60 * 1000,
+                "None"
             );
 
             const params =
@@ -566,6 +574,7 @@ app.get(
                     code: req.query.code
                         ? "PRESENT"
                         : "MISSING",
+
                     state: req.query.state
                         ? "PRESENT"
                         : "MISSING"
@@ -580,6 +589,10 @@ app.get(
 
             const oauthError =
                 req.query.error;
+
+            // ------------------------------------------
+            // DISCORD ERROR
+            // ------------------------------------------
 
             if (oauthError) {
                 console.error(
@@ -607,9 +620,9 @@ app.get(
                     );
             }
 
-            // ==============================================
+            // ------------------------------------------
             // READ STATE COOKIE
-            // ==============================================
+            // ------------------------------------------
 
             const cookies =
                 parseCookies(req);
@@ -687,9 +700,9 @@ app.get(
                 "pd_oauth_state"
             );
 
-            // ==============================================
+            // ------------------------------------------
             // EXCHANGE CODE
-            // ==============================================
+            // ------------------------------------------
 
             const tokenParams =
                 new URLSearchParams();
@@ -724,10 +737,12 @@ app.get(
                     "https://discord.com/api/oauth2/token",
                     {
                         method: "POST",
+
                         headers: {
                             "Content-Type":
                                 "application/x-www-form-urlencoded"
                         },
+
                         body:
                             tokenParams.toString()
                     }
@@ -770,9 +785,9 @@ app.get(
                     );
             }
 
-            // ==============================================
+            // ------------------------------------------
             // GET DISCORD USER
-            // ==============================================
+            // ------------------------------------------
 
             const userResponse =
                 await fetch(
@@ -805,9 +820,9 @@ app.get(
                     );
             }
 
-            // ==============================================
+            // ------------------------------------------
             // SAVE SESSION
-            // ==============================================
+            // ------------------------------------------
 
             saveLoggedUser(
                 res,
@@ -833,9 +848,9 @@ app.get(
                 "SESSION COOKIE: CREATED"
             );
 
-            // ==============================================
+            // ------------------------------------------
             // OPTIONAL SERVER JOIN
-            // ==============================================
+            // ------------------------------------------
 
             if (
                 savedState.join &&
@@ -854,13 +869,16 @@ app.get(
                                 `https://discord.com/api/guilds/${GUILD_ID}/members/${user.id}`,
                                 {
                                     method: "PUT",
+
                                     headers: {
                                         Authorization:
                                             "Bot " +
                                             BOT_TOKEN,
+
                                         "Content-Type":
                                             "application/json"
                                     },
+
                                     body:
                                         JSON.stringify({
                                             access_token:
@@ -941,13 +959,17 @@ app.get(
 
         return res.json({
             loggedIn: true,
+
             user: {
                 id: user.id,
+
                 username:
                     user.username,
+
                 global_name:
                     user.global_name ||
                     user.username,
+
                 avatar:
                     user.avatar || null
             }
@@ -977,28 +999,51 @@ app.get(
 
 const questions = [
     "9adech 3omrek fi denya?",
+
     "Chnowa ta3ref 3al PD?",
+
     "9adech men se3a tel3eb fi nhar?",
+
     "Chnowa bch tfidna enti fel PD?",
+
     "3lech 5tart el PD men kol el factions w gangs?",
+
     "3andek 5ebra 9bal fel PD?",
+
     "Chnowa esmek In-Game?",
+
     "Chnowa level mte3ek In-Game?",
+
     "Ken t3areket enti w zamilik, chnowa bch ta3mel?",
+
     "9adech men 3am wala chhar 3andek tel3eb SA-MP?",
+
     "3lech theb tod5el lel PD?",
+
     "Ba3ed barcha 5edma fel PD, chnowa bch ta3mel?",
+
     "Ken wehed jek yheb ya3mel m3ak fight, chnowa bch ta3mel?",
+
     "Ken jbetlo Tazer bech tazih, chnowa bch ta3mel?",
+
     "Chnowa ma3neha RP?",
+
     "Chnowa ma3neha Mass RP?",
+
     "Chnowa ma3neha Force RP?",
+
     "Chnowa ma3neha Team Kill?",
+
     "Chnowa ma3neha Power Gaming (PG)?",
+
     "Chnowa ma3neha Zero Value Of Life (ZVL)?",
+
     "Chnowa ma3neha Vehicle Deathmatching (RVDM)?",
+
     "Chnowa ma3neha Revenge Kill (RK)?",
+
     "Chnowa ma3neha Combat Storing (CS)?",
+
     "Chnowa ma3neha Logging To Avoid (LTA)?"
 ];
 
@@ -1010,6 +1055,10 @@ app.post(
     "/api/application",
     async (req, res) => {
         try {
+            // ------------------------------------------
+            // CHECK LOGIN
+            // ------------------------------------------
+
             const user =
                 getLoggedUser(req);
 
@@ -1018,14 +1067,23 @@ app.post(
                     .status(401)
                     .json({
                         success: false,
+
                         message:
                             "Lezem ta3mel Login with Discord."
                     });
             }
 
+            // ------------------------------------------
+            // GET ANSWERS
+            // ------------------------------------------
+
             const answers =
                 req.body.answers ||
                 req.body;
+
+            // ------------------------------------------
+            // CHECK ALL QUESTIONS
+            // ------------------------------------------
 
             for (
                 let i = 1;
@@ -1043,6 +1101,7 @@ app.post(
                         .status(400)
                         .json({
                             success: false,
+
                             message:
                                 "Lezem tjaweb 3la sou2el " +
                                 i +
@@ -1051,15 +1110,24 @@ app.post(
                 }
             }
 
+            // ------------------------------------------
+            // CHECK BOT
+            // ------------------------------------------
+
             if (!bot.isReady()) {
                 return res
                     .status(503)
                     .json({
                         success: false,
+
                         message:
                             "Discord bot is not ready."
                     });
             }
+
+            // ------------------------------------------
+            // GET APPLICATION CHANNEL
+            // ------------------------------------------
 
             const channel =
                 await bot.channels.fetch(
@@ -1078,31 +1146,48 @@ app.post(
                 );
             }
 
+            // ------------------------------------------
+            // APPLICATION EMBED
+            // ------------------------------------------
+
             const embed =
                 new EmbedBuilder()
                     .setTitle(
                         "🚔 PD APPLICATION"
                     )
+
                     .setDescription(
                         "📋 Nouvelle demande PD\n\n" +
+
                         "👤 Applicant: **" +
                         (
                             user.global_name ||
                             user.username
                         ) +
                         "**\n\n" +
+
                         "🆔 Discord ID: **" +
                         user.id +
                         "**"
                     )
+
                     .setColor(0x1769aa)
+
                     .setTimestamp();
+
+            // ------------------------------------------
+            // AVATAR
+            // ------------------------------------------
 
             if (user.avatar) {
                 embed.setThumbnail(
                     `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
                 );
             }
+
+            // ------------------------------------------
+            // QUESTIONS + ANSWERS
+            // ------------------------------------------
 
             questions.forEach(
                 (question, index) => {
@@ -1121,6 +1206,7 @@ app.post(
                             (index + 1) +
                             ". " +
                             question,
+
                         value:
                             answer ||
                             "Aucune réponse"
@@ -1128,44 +1214,100 @@ app.post(
                 }
             );
 
+            // ------------------------------------------
+            // UNIQUE APPLICATION ID
+            // ------------------------------------------
+
+            const applicationId =
+                crypto
+                    .randomBytes(8)
+                    .toString("hex");
+
+            // ------------------------------------------
+            // ACCEPT / REFUSE BUTTONS
+            // ------------------------------------------
+
             const buttons =
                 new ActionRowBuilder()
                     .addComponents(
+
                         new ButtonBuilder()
                             .setCustomId(
-                                "pd_accept:" +
-                                user.id
+                                `pd_accept:${user.id}:${applicationId}`
                             )
-                            .setLabel("ACCEPT")
-                            .setEmoji("✅")
+
+                            .setLabel(
+                                "ACCEPT"
+                            )
+
+                            .setEmoji(
+                                "✅"
+                            )
+
                             .setStyle(
                                 ButtonStyle.Success
                             ),
 
                         new ButtonBuilder()
                             .setCustomId(
-                                "pd_refuse:" +
-                                user.id
+                                `pd_refuse:${user.id}:${applicationId}`
                             )
-                            .setLabel("REFUSE")
-                            .setEmoji("❌")
+
+                            .setLabel(
+                                "REFUSE"
+                            )
+
+                            .setEmoji(
+                                "❌"
+                            )
+
                             .setStyle(
                                 ButtonStyle.Danger
                             )
                     );
 
+            // ------------------------------------------
+            // SEND APPLICATION
+            // ------------------------------------------
+
             await channel.send({
                 embeds: [embed],
-                components: [buttons]
+
+                components: [
+                    buttons
+                ]
             });
 
             console.log(
-                "✅ Application submitted by:",
+                "================================="
+            );
+
+            console.log(
+                "✅ APPLICATION SUBMITTED"
+            );
+
+            console.log(
+                "Applicant:",
                 user.username
+            );
+
+            console.log(
+                "Discord ID:",
+                user.id
+            );
+
+            console.log(
+                "Application ID:",
+                applicationId
+            );
+
+            console.log(
+                "================================="
             );
 
             return res.json({
                 success: true,
+
                 message:
                     "Application sent successfully."
             });
@@ -1180,6 +1322,7 @@ app.post(
                 .status(500)
                 .json({
                     success: false,
+
                     message:
                         error.message ||
                         "Application failed."
@@ -1189,49 +1332,95 @@ app.post(
 );
 
 // ==================================================
+// PROCESSED APPLICATIONS
+// ==================================================
+
+// Prevents double-click / double decision
+// while the bot is running.
+
+const processedApplications =
+    new Set();
+
+// ==================================================
 // BUTTON INTERACTIONS
 // ==================================================
 
 bot.on(
     "interactionCreate",
     async (interaction) => {
+
         if (!interaction.isButton()) {
             return;
         }
 
-        if (
-            !interaction.customId.startsWith(
+        // ------------------------------------------
+        // CHECK BUTTON
+        // ------------------------------------------
+
+        const isAccept =
+            interaction.customId.startsWith(
                 "pd_accept:"
-            ) &&
-            !interaction.customId.startsWith(
+            );
+
+        const isRefuse =
+            interaction.customId.startsWith(
                 "pd_refuse:"
-            )
+            );
+
+        if (
+            !isAccept &&
+            !isRefuse
         ) {
             return;
         }
 
         try {
-            const accepted =
-                interaction.customId.startsWith(
-                    "pd_accept:"
-                );
+
+            // ------------------------------------------
+            // READ CUSTOM ID
+            // ------------------------------------------
+
+            const parts =
+                interaction.customId.split(":");
 
             const applicantId =
-                interaction.customId.split(":")[1];
+                parts[1];
 
-            const resultChannel =
-                await bot.channels.fetch(
-                    RESULTS_CHANNEL_ID
-                );
+            const applicationId =
+                parts[2];
 
-            if (!resultChannel) {
+            if (
+                !applicantId ||
+                !applicationId
+            ) {
+                return;
+            }
+
+            // ------------------------------------------
+            // UNIQUE KEY
+            // ------------------------------------------
+
+            const applicationKey =
+                `${interaction.message.id}:${applicationId}`;
+
+            // ------------------------------------------
+            // ALREADY PROCESSED?
+            // ------------------------------------------
+
+            if (
+                processedApplications.has(
+                    applicationKey
+                )
+            ) {
+
                 if (
                     !interaction.replied &&
                     !interaction.deferred
                 ) {
                     await interaction.reply({
                         content:
-                            "❌ Results channel not found.",
+                            "⚠️ This application has already been processed.",
+
                         ephemeral: true
                     });
                 }
@@ -1239,62 +1428,245 @@ bot.on(
                 return;
             }
 
+            // Lock immediately
+            processedApplications.add(
+                applicationKey
+            );
+
+            // ------------------------------------------
+            // GET RESULTS CHANNEL
+            // ------------------------------------------
+
+            const resultChannel =
+                await bot.channels.fetch(
+                    RESULTS_CHANNEL_ID
+                );
+
+            if (
+                !resultChannel ||
+                !resultChannel.isTextBased()
+            ) {
+
+                processedApplications.delete(
+                    applicationKey
+                );
+
+                if (
+                    !interaction.replied &&
+                    !interaction.deferred
+                ) {
+                    await interaction.reply({
+                        content:
+                            "❌ Results channel not found.",
+
+                        ephemeral: true
+                    });
+                }
+
+                return;
+            }
+
+            // ------------------------------------------
+            // GET APPLICANT
+            // ------------------------------------------
+
             const applicant =
                 await bot.users
                     .fetch(applicantId)
-                    .catch(() => null);
+                    .catch(
+                        () => null
+                    );
 
-            const applicantName =
-                applicant
-                    ? applicant.username +
-                      " (" +
-                      applicant.id +
-                      ")"
-                    : applicantId;
+            if (!applicant) {
 
-            const resultMessage =
-                accepted
-                    ? "✅ **PD Application ACCEPTED**\n" +
-                      "👤 Applicant: " +
-                      applicantName
-                    : "❌ **PD Application REFUSED**\n" +
-                      "👤 Applicant: " +
-                      applicantName;
+                processedApplications.delete(
+                    applicationKey
+                );
 
-            await resultChannel.send(
-                resultMessage
-            );
+                if (
+                    !interaction.replied &&
+                    !interaction.deferred
+                ) {
+                    await interaction.reply({
+                        content:
+                            "❌ Applicant not found.",
 
-            if (
-                !interaction.replied &&
-                !interaction.deferred
-            ) {
-                await interaction.update({
-                    content:
-                        accepted
-                            ? "✅ Application accepted."
-                            : "❌ Application refused.",
-                    components: []
-                });
+                        ephemeral: true
+                    });
+                }
+
+                return;
             }
 
+            // ------------------------------------------
+            // RESULT MESSAGE
+            // ------------------------------------------
+
+            let resultMessage;
+
+            if (isAccept) {
+
+                resultMessage =
+                    `<@${applicantId}> Your Whitelist Application has been accepted ✅ Welcome aboard! , welcome to LSPD 💕 !`;
+
+            } else {
+
+                resultMessage =
+                    `Sorry.. But Your PD application has been rejected.`;
+            }
+
+            // ------------------------------------------
+            // SEND RESULT
+            // ------------------------------------------
+
+            await resultChannel.send({
+                content:
+                    resultMessage
+            });
+
+            // ------------------------------------------
+            // LOG
+            // ------------------------------------------
+
+            if (isAccept) {
+
+                console.log(
+                    "================================="
+                );
+
+                console.log(
+                    "✅ PD APPLICATION ACCEPTED"
+                );
+
+                console.log(
+                    "Applicant:",
+                    applicant.username
+                );
+
+                console.log(
+                    "Discord ID:",
+                    applicantId
+                );
+
+                console.log(
+                    "================================="
+                );
+
+            } else {
+
+                console.log(
+                    "================================="
+                );
+
+                console.log(
+                    "❌ PD APPLICATION REJECTED"
+                );
+
+                console.log(
+                    "Applicant:",
+                    applicant.username
+                );
+
+                console.log(
+                    "Discord ID:",
+                    applicantId
+                );
+
+                console.log(
+                    "================================="
+                );
+            }
+
+            // ------------------------------------------
+            // DISABLE BUTTONS
+            // ------------------------------------------
+
+            const disabledRow =
+                new ActionRowBuilder();
+
+            for (
+                const row of
+                interaction.message.components
+            ) {
+
+                for (
+                    const component of
+                    row.components
+                ) {
+
+                    disabledRow.addComponents(
+                        ButtonBuilder
+                            .from(component)
+                            .setDisabled(true)
+                    );
+                }
+            }
+
+            // ------------------------------------------
+            // UPDATE APPLICATION MESSAGE
+            // ------------------------------------------
+
+            await interaction.update({
+                components: [
+                    disabledRow
+                ]
+            });
+
         } catch (error) {
+
             console.error(
                 "❌ Button interaction error:",
                 error
             );
 
+            // ------------------------------------------
+            // ALLOW RETRY IF ERROR
+            // ------------------------------------------
+
+            try {
+
+                const parts =
+                    interaction.customId
+                        .split(":");
+
+                const applicantId =
+                    parts[1];
+
+                const applicationId =
+                    parts[2];
+
+                if (
+                    applicantId &&
+                    applicationId
+                ) {
+
+                    processedApplications.delete(
+                        `${interaction.message.id}:${applicationId}`
+                    );
+                }
+
+            } catch {}
+
+            // ------------------------------------------
+            // REPLY TO INTERACTION
+            // ------------------------------------------
+
             if (
                 !interaction.replied &&
                 !interaction.deferred
             ) {
+
                 try {
+
                     await interaction.reply({
                         content:
-                            "❌ An error occurred.",
+                            "❌ An error occurred while processing this application.",
+
                         ephemeral: true
                     });
+
                 } catch (replyError) {
+
                     console.error(
                         "Could not reply to interaction:",
                         replyError
@@ -1310,9 +1682,11 @@ bot.on(
 // ==================================================
 
 if (require.main === module) {
+
     app.listen(
         PORT,
         () => {
+
             console.log(
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             );
@@ -1337,8 +1711,10 @@ if (require.main === module) {
 // ==================================================
 
 if (BOT_TOKEN) {
+
     bot.login(BOT_TOKEN)
         .then(() => {
+
             console.log(
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             );
@@ -1354,14 +1730,19 @@ if (BOT_TOKEN) {
             console.log(
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             );
+
         })
+
         .catch((error) => {
+
             console.error(
                 "❌ Discord bot login failed:",
                 error
             );
         });
+
 } else {
+
     console.error(
         "❌ DISCORD_BOT_TOKEN is missing."
     );
