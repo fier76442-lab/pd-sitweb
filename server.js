@@ -34,23 +34,23 @@ const RESULTS_CHANNEL_ID =
     process.env.RESULTS_CHANNEL_ID;
 
 const SESSION_SECRET =
-    process.env.SESSION_SECRET ||
-    "change-this-session-secret";
+    process.env.SESSION_SECRET;
 
 const REDIRECT_URI =
     process.env.DISCORD_REDIRECT_URI ||
     `http://localhost:${PORT}/auth/discord/callback`;
 
-const IS_NETLIFY =
-    process.env.NETLIFY === "true" ||
-    !!process.env.NETLIFY_FUNCTIONS_VERSION;
+// Render = production
+const IS_PRODUCTION =
+    process.env.NODE_ENV === "production" ||
+    !!process.env.RENDER;
 
 // ==================================================
 // CONFIG CHECK
 // ==================================================
 
 console.log("=================================");
-console.log("PD APPLICATION CONFIG");
+console.log("🚔 PD APPLICATION");
 console.log("=================================");
 
 console.log(
@@ -94,15 +94,23 @@ console.log(
 );
 
 console.log(
-    "NETLIFY:",
-    IS_NETLIFY ? "YES" : "NO"
+    "PRODUCTION:",
+    IS_PRODUCTION ? "YES" : "NO"
 );
 
 console.log("=================================");
 
+if (!SESSION_SECRET) {
+    console.error(
+        "❌ SESSION_SECRET is missing from environment variables."
+    );
+}
+
 // ==================================================
 // EXPRESS
 // ==================================================
+
+app.set("trust proxy", 1);
 
 app.use(express.json());
 
@@ -113,13 +121,21 @@ app.use(
 );
 
 // ==================================================
+// STATIC WEBSITE
+// ==================================================
+
+app.use(
+    express.static(
+        path.join(__dirname, "public")
+    )
+);
+
+// ==================================================
 // COOKIE HELPERS
 // ==================================================
 
 function parseCookies(req) {
-
-    const header =
-        req.headers.cookie;
+    const header = req.headers.cookie;
 
     if (!header) {
         return {};
@@ -127,82 +143,74 @@ function parseCookies(req) {
 
     const cookies = {};
 
-    header
-        .split(";")
-        .forEach((part) => {
+    header.split(";").forEach((part) => {
+        const index = part.indexOf("=");
 
-            const index =
-                part.indexOf("=");
+        if (index === -1) {
+            return;
+        }
 
-            if (index === -1) {
-                return;
-            }
+        const key = part
+            .slice(0, index)
+            .trim();
 
-            const key =
-                part
-                    .slice(0, index)
-                    .trim();
+        const value = part
+            .slice(index + 1)
+            .trim();
 
-            const value =
-                part
-                    .slice(index + 1)
-                    .trim();
-
+        try {
             cookies[key] =
                 decodeURIComponent(value);
-
-        });
+        } catch {
+            cookies[key] = value;
+        }
+    });
 
     return cookies;
 }
 
+// ==================================================
+// BASE64 URL
+// ==================================================
 
 function base64urlEncode(value) {
-
     return Buffer
         .from(value)
         .toString("base64")
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
         .replace(/=/g, "");
-
 }
 
-
 function base64urlDecode(value) {
+    let data = String(value)
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
 
-    value =
-        value
-            .replace(/-/g, "+")
-            .replace(/_/g, "/");
-
-    while (
-        value.length % 4
-    ) {
-        value += "=";
+    while (data.length % 4) {
+        data += "=";
     }
 
     return Buffer
-        .from(value, "base64")
-        .toString();
+        .from(data, "base64")
+        .toString("utf8");
 }
 
+// ==================================================
+// SIGNED VALUES
+// ==================================================
 
 function createSignature(data) {
-
     return crypto
         .createHmac(
             "sha256",
-            SESSION_SECRET
+            SESSION_SECRET || "temporary-secret"
         )
         .update(data)
         .digest("base64url");
-
 }
 
-
 function createSignedValue(data) {
-
     const encoded =
         base64urlEncode(
             JSON.stringify(data)
@@ -211,66 +219,64 @@ function createSignedValue(data) {
     const signature =
         createSignature(encoded);
 
-    return encoded +
-        "." +
-        signature;
-
+    return `${encoded}.${signature}`;
 }
 
-
 function verifySignedValue(value) {
-
     if (!value) {
         return null;
     }
 
-    const parts =
-        value.split(".");
+    const parts = String(value).split(".");
 
     if (parts.length !== 2) {
         return null;
     }
 
-    const encoded =
-        parts[0];
-
-    const signature =
-        parts[1];
+    const encoded = parts[0];
+    const signature = parts[1];
 
     const expected =
         createSignature(encoded);
 
     try {
+        const signatureBuffer =
+            Buffer.from(signature);
+
+        const expectedBuffer =
+            Buffer.from(expected);
 
         if (
-            !crypto.timingSafeEqual(
-                Buffer.from(signature),
-                Buffer.from(expected)
-            )
+            signatureBuffer.length !==
+            expectedBuffer.length
         ) {
             return null;
         }
 
+        if (
+            !crypto.timingSafeEqual(
+                signatureBuffer,
+                expectedBuffer
+            )
+        ) {
+            return null;
+        }
     } catch {
-
         return null;
-
     }
 
     try {
-
         return JSON.parse(
             base64urlDecode(encoded)
         );
-
     } catch {
-
         return null;
-
     }
-
 }
 
+// ==================================================
+// SET COOKIE
+// ==================================================
 
 function setCookie(
     res,
@@ -278,72 +284,53 @@ function setCookie(
     value,
     maxAge
 ) {
-
-    const secure =
-        IS_NETLIFY ||
-        process.env.NODE_ENV === "production";
-
     let cookie =
-        name +
-        "=" +
-        encodeURIComponent(value) +
-        "; Path=/; HttpOnly; SameSite=Lax";
+        `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax`;
 
     if (maxAge !== undefined) {
-
         cookie +=
-            "; Max-Age=" +
-            Math.floor(maxAge / 1000);
-
+            `; Max-Age=${Math.floor(maxAge / 1000)}`;
     }
 
-    if (secure) {
-
-        cookie +=
-            "; Secure";
-
+    if (IS_PRODUCTION) {
+        cookie += "; Secure";
     }
 
     const existing =
         res.getHeader("Set-Cookie");
 
-    const list =
-        existing
-            ? Array.isArray(existing)
-                ? existing
-                : [existing]
-            : [];
+    const cookies = existing
+        ? Array.isArray(existing)
+            ? [...existing]
+            : [existing]
+        : [];
 
-    list.push(cookie);
+    cookies.push(cookie);
 
     res.setHeader(
         "Set-Cookie",
-        list
+        cookies
     );
-
 }
 
+// ==================================================
+// CLEAR COOKIE
+// ==================================================
 
-function clearCookie(
-    res,
-    name
-) {
-
+function clearCookie(res, name) {
     setCookie(
         res,
         name,
         "",
         0
     );
-
 }
 
 // ==================================================
-// USER COOKIE
+// GET LOGGED USER
 // ==================================================
 
 function getLoggedUser(req) {
-
     const cookies =
         parseCookies(req);
 
@@ -370,7 +357,6 @@ function getLoggedUser(req) {
         return null;
     }
 
-    // 24 hours
     const maxAge =
         1000 * 60 * 60 * 24;
 
@@ -383,38 +369,30 @@ function getLoggedUser(req) {
     }
 
     return session.user;
-
 }
 
+// ==================================================
+// SAVE LOGGED USER
+// ==================================================
 
-function saveLoggedUser(
-    res,
-    user
-) {
+function saveLoggedUser(res, user) {
+    const sessionData = {
+        user: {
+            id: user.id,
+            username: user.username,
+            global_name:
+                user.global_name ||
+                user.username,
+            avatar:
+                user.avatar || null
+        },
+        created: Date.now()
+    };
 
     const value =
-        createSignedValue({
-
-            user: {
-
-                id:
-                    user.id,
-
-                username:
-                    user.username,
-
-                global_name:
-                    user.global_name,
-
-                avatar:
-                    user.avatar
-
-            },
-
-            created:
-                Date.now()
-
-        });
+        createSignedValue(
+            sessionData
+        );
 
     setCookie(
         res,
@@ -422,7 +400,6 @@ function saveLoggedUser(
         value,
         1000 * 60 * 60 * 24
     );
-
 }
 
 // ==================================================
@@ -430,25 +407,10 @@ function saveLoggedUser(
 // ==================================================
 
 const bot = new Client({
-
     intents: [
         GatewayIntentBits.Guilds
     ]
-
 });
-
-// ==================================================
-// STATIC WEBSITE
-// ==================================================
-
-app.use(
-    express.static(
-        path.join(
-            __dirname,
-            "public"
-        )
-    )
-);
 
 // ==================================================
 // DISCORD LOGIN
@@ -457,42 +419,30 @@ app.use(
 app.get(
     "/auth/discord",
     (req, res) => {
-
         try {
-
             if (!CLIENT_ID) {
-
                 return res
                     .status(500)
                     .send(
                         "DISCORD_CLIENT_ID is missing."
                     );
-
             }
 
             if (!CLIENT_SECRET) {
-
                 return res
                     .status(500)
                     .send(
                         "DISCORD_CLIENT_SECRET is missing."
                     );
-
             }
 
-            if (!REDIRECT_URI) {
-
+            if (!SESSION_SECRET) {
                 return res
                     .status(500)
                     .send(
-                        "DISCORD_REDIRECT_URI is missing."
+                        "SESSION_SECRET is missing."
                     );
-
             }
-
-            // ==================================================
-            // CREATE STATE
-            // ==================================================
 
             const state =
                 crypto
@@ -502,35 +452,30 @@ app.get(
             const join =
                 req.query.join === "1";
 
-            const stateValue =
-                createSignedValue({
+            const stateData = {
+                state,
+                join,
+                created: Date.now()
+            };
 
-                    state,
-
-                    join,
-
-                    created:
-                        Date.now()
-
-                });
+            const stateCookie =
+                createSignedValue(
+                    stateData
+                );
 
             setCookie(
                 res,
                 "pd_oauth_state",
-                stateValue,
+                stateCookie,
                 10 * 60 * 1000
             );
-
-            // ==================================================
-            // DISCORD OAUTH
-            // ==================================================
 
             const params =
                 new URLSearchParams();
 
             params.set(
                 "client_id",
-                String(CLIENT_ID)
+                CLIENT_ID
             );
 
             params.set(
@@ -540,7 +485,7 @@ app.get(
 
             params.set(
                 "redirect_uri",
-                String(REDIRECT_URI)
+                REDIRECT_URI
             );
 
             params.set(
@@ -564,28 +509,16 @@ app.get(
             );
 
             console.log(
-                "DISCORD OAUTH LOGIN"
+                "🔐 DISCORD LOGIN START"
             );
 
             console.log(
-                "CLIENT_ID:",
-                CLIENT_ID
-            );
-
-            console.log(
-                "REDIRECT_URI:",
+                "REDIRECT:",
                 REDIRECT_URI
             );
 
             console.log(
-                "SCOPE:",
-                join
-                    ? "identify guilds.join"
-                    : "identify"
-            );
-
-            console.log(
-                "STATE CREATED: OK"
+                "STATE COOKIE: CREATED"
             );
 
             console.log(
@@ -597,7 +530,6 @@ app.get(
             );
 
         } catch (error) {
-
             console.error(
                 "OAuth start error:",
                 error
@@ -608,9 +540,7 @@ app.get(
                 .send(
                     "Unable to start Discord login."
                 );
-
         }
-
     }
 );
 
@@ -621,8 +551,26 @@ app.get(
 app.get(
     "/auth/discord/callback",
     async (req, res) => {
-
         try {
+            console.log(
+                "================================="
+            );
+
+            console.log(
+                "🔄 DISCORD CALLBACK"
+            );
+
+            console.log(
+                "Query:",
+                {
+                    code: req.query.code
+                        ? "PRESENT"
+                        : "MISSING",
+                    state: req.query.state
+                        ? "PRESENT"
+                        : "MISSING"
+                }
+            );
 
             const code =
                 req.query.code;
@@ -630,18 +578,13 @@ app.get(
             const state =
                 req.query.state;
 
-            const error =
+            const oauthError =
                 req.query.error;
 
-            // ==================================================
-            // DISCORD ERROR
-            // ==================================================
-
-            if (error) {
-
+            if (oauthError) {
                 console.error(
-                    "Discord OAuth returned error:",
-                    error
+                    "Discord OAuth error:",
+                    oauthError
                 );
 
                 clearCookie(
@@ -654,42 +597,49 @@ app.get(
                     .send(
                         "Discord authentication was cancelled."
                     );
-
             }
 
-            // ==================================================
-            // CHECK CODE / STATE
-            // ==================================================
-
-            if (
-                !code ||
-                !state
-            ) {
-
+            if (!code || !state) {
                 return res
                     .status(400)
                     .send(
                         "Invalid OAuth request."
                     );
-
             }
 
-            // ==================================================
+            // ==============================================
             // READ STATE COOKIE
-            // ==================================================
+            // ==============================================
 
             const cookies =
                 parseCookies(req);
 
+            const rawStateCookie =
+                cookies.pd_oauth_state;
+
+            console.log(
+                "STATE COOKIE:",
+                rawStateCookie
+                    ? "RECEIVED"
+                    : "MISSING"
+            );
+
+            if (!rawStateCookie) {
+                return res
+                    .status(400)
+                    .send(
+                        "OAuth state cookie was not received. Please try Login with Discord again."
+                    );
+            }
+
             const savedState =
                 verifySignedValue(
-                    cookies.pd_oauth_state
+                    rawStateCookie
                 );
 
             if (!savedState) {
-
                 console.error(
-                    "OAuth state cookie missing or invalid."
+                    "❌ OAuth state signature invalid."
                 );
 
                 return res
@@ -697,20 +647,14 @@ app.get(
                     .send(
                         "Invalid or expired OAuth state."
                     );
-
             }
-
-            // ==================================================
-            // CHECK STATE
-            // ==================================================
 
             if (
                 savedState.state !==
                 state
             ) {
-
                 console.error(
-                    "OAuth state mismatch."
+                    "❌ OAuth state mismatch."
                 );
 
                 return res
@@ -718,12 +662,7 @@ app.get(
                     .send(
                         "Invalid OAuth state."
                     );
-
             }
-
-            // ==================================================
-            // CHECK EXPIRATION
-            // ==================================================
 
             if (
                 !savedState.created ||
@@ -731,7 +670,6 @@ app.get(
                 savedState.created >
                 10 * 60 * 1000
             ) {
-
                 clearCookie(
                     res,
                     "pd_oauth_state"
@@ -742,30 +680,28 @@ app.get(
                     .send(
                         "OAuth state expired."
                     );
-
             }
 
-            // State used successfully
             clearCookie(
                 res,
                 "pd_oauth_state"
             );
 
-            // ==================================================
-            // EXCHANGE CODE FOR TOKEN
-            // ==================================================
+            // ==============================================
+            // EXCHANGE CODE
+            // ==============================================
 
             const tokenParams =
                 new URLSearchParams();
 
             tokenParams.set(
                 "client_id",
-                String(CLIENT_ID)
+                CLIENT_ID
             );
 
             tokenParams.set(
                 "client_secret",
-                String(CLIENT_SECRET)
+                CLIENT_SECRET
             );
 
             tokenParams.set(
@@ -775,31 +711,25 @@ app.get(
 
             tokenParams.set(
                 "code",
-                String(code)
+                code
             );
 
             tokenParams.set(
                 "redirect_uri",
-                String(REDIRECT_URI)
+                REDIRECT_URI
             );
 
             const tokenResponse =
                 await fetch(
                     "https://discord.com/api/oauth2/token",
                     {
-
                         method: "POST",
-
                         headers: {
-
                             "Content-Type":
                                 "application/x-www-form-urlencoded"
-
                         },
-
                         body:
                             tokenParams.toString()
-
                     }
                 );
 
@@ -809,22 +739,18 @@ app.get(
             let tokenData;
 
             try {
-
                 tokenData =
                     JSON.parse(
                         tokenText
                     );
-
             } catch {
-
                 tokenData = {
                     raw: tokenText
                 };
-
             }
 
             console.log(
-                "Discord token response:",
+                "TOKEN RESPONSE:",
                 tokenResponse.status
             );
 
@@ -832,7 +758,6 @@ app.get(
                 !tokenResponse.ok ||
                 !tokenData.access_token
             ) {
-
                 console.error(
                     "OAuth token error:",
                     tokenData
@@ -843,26 +768,21 @@ app.get(
                     .send(
                         "Discord OAuth failed."
                     );
-
             }
 
-            // ==================================================
+            // ==============================================
             // GET DISCORD USER
-            // ==================================================
+            // ==============================================
 
             const userResponse =
                 await fetch(
                     "https://discord.com/api/users/@me",
                     {
-
                         headers: {
-
                             Authorization:
                                 "Bearer " +
                                 tokenData.access_token
-
                         }
-
                     }
                 );
 
@@ -873,7 +793,6 @@ app.get(
                 !userResponse.ok ||
                 !user.id
             ) {
-
                 console.error(
                     "Discord user error:",
                     user
@@ -884,12 +803,11 @@ app.get(
                     .send(
                         "Unable to get Discord user."
                     );
-
             }
 
-            // ==================================================
-            // SAVE USER IN SIGNED COOKIE
-            // ==================================================
+            // ==============================================
+            // SAVE SESSION
+            // ==============================================
 
             saveLoggedUser(
                 res,
@@ -897,13 +815,27 @@ app.get(
             );
 
             console.log(
-                "Discord user logged in:",
+                "✅ DISCORD LOGIN SUCCESS"
+            );
+
+            console.log(
+                "User:",
+                user.global_name ||
                 user.username
             );
 
-            // ==================================================
-            // JOIN SERVER
-            // ==================================================
+            console.log(
+                "ID:",
+                user.id
+            );
+
+            console.log(
+                "SESSION COOKIE: CREATED"
+            );
+
+            // ==============================================
+            // OPTIONAL SERVER JOIN
+            // ==============================================
 
             if (
                 savedState.join &&
@@ -912,53 +844,34 @@ app.get(
                     "guilds.join"
                 )
             ) {
-
                 if (
                     GUILD_ID &&
                     BOT_TOKEN
                 ) {
-
                     try {
-
                         const joinResponse =
                             await fetch(
-
-                                "https://discord.com/api/guilds/" +
-                                GUILD_ID +
-                                "/members/" +
-                                user.id,
-
+                                `https://discord.com/api/guilds/${GUILD_ID}/members/${user.id}`,
                                 {
-
                                     method: "PUT",
-
                                     headers: {
-
                                         Authorization:
                                             "Bot " +
                                             BOT_TOKEN,
-
                                         "Content-Type":
                                             "application/json"
-
                                     },
-
                                     body:
                                         JSON.stringify({
-
                                             access_token:
                                                 tokenData.access_token
-
                                         })
-
-                                    }
-
+                                }
                             );
 
                         if (
                             !joinResponse.ok
                         ) {
-
                             const errorText =
                                 await joinResponse.text();
 
@@ -967,39 +880,30 @@ app.get(
                                 joinResponse.status,
                                 errorText
                             );
-
                         } else {
-
                             console.log(
-                                user.username +
-                                " joined the Discord server."
+                                "✅ User joined Discord server."
                             );
-
                         }
 
                     } catch (joinError) {
-
                         console.error(
-                            "Guild join request error:",
+                            "Guild join error:",
                             joinError
                         );
-
                     }
-
                 }
-
             }
 
-            // ==================================================
-            // SUCCESS
-            // ==================================================
+            console.log(
+                "================================="
+            );
 
             return res.redirect("/");
 
         } catch (error) {
-
             console.error(
-                "OAuth callback error:",
+                "❌ OAuth callback error:",
                 error
             );
 
@@ -1008,9 +912,7 @@ app.get(
                 .send(
                     "Something went wrong with Discord authentication."
                 );
-
         }
-
     }
 );
 
@@ -1021,28 +923,35 @@ app.get(
 app.get(
     "/api/me",
     (req, res) => {
-
         const user =
             getLoggedUser(req);
 
+        console.log(
+            "📡 /api/me:",
+            user
+                ? `LOGGED IN - ${user.username}`
+                : "NOT LOGGED IN"
+        );
+
         if (!user) {
-
             return res.json({
-
                 loggedIn: false
-
             });
-
         }
 
         return res.json({
-
             loggedIn: true,
-
-            user
-
+            user: {
+                id: user.id,
+                username:
+                    user.username,
+                global_name:
+                    user.global_name ||
+                    user.username,
+                avatar:
+                    user.avatar || null
+            }
         });
-
     }
 );
 
@@ -1053,16 +962,12 @@ app.get(
 app.get(
     "/logout",
     (req, res) => {
-
         clearCookie(
             res,
             "pd_session"
         );
 
-        return res.redirect(
-            "/"
-        );
-
+        return res.redirect("/");
     }
 );
 
@@ -1071,55 +976,30 @@ app.get(
 // ==================================================
 
 const questions = [
-
     "9adech 3omrek fi denya?",
-
     "Chnowa ta3ref 3al PD?",
-
     "9adech men se3a tel3eb fi nhar?",
-
     "Chnowa bch tfidna enti fel PD?",
-
     "3lech 5tart el PD men kol el factions w gangs?",
-
     "3andek 5ebra 9bal fel PD?",
-
     "Chnowa esmek In-Game?",
-
     "Chnowa level mte3ek In-Game?",
-
     "Ken t3areket enti w zamilik, chnowa bch ta3mel?",
-
     "9adech men 3am wala chhar 3andek tel3eb SA-MP?",
-
     "3lech theb tod5el lel PD?",
-
     "Ba3ed barcha 5edma fel PD, chnowa bch ta3mel?",
-
     "Ken wehed jek yheb ya3mel m3ak fight, chnowa bch ta3mel?",
-
     "Ken jbetlo Tazer bech tazih, chnowa bch ta3mel?",
-
     "Chnowa ma3neha RP?",
-
     "Chnowa ma3neha Mass RP?",
-
     "Chnowa ma3neha Force RP?",
-
     "Chnowa ma3neha Team Kill?",
-
     "Chnowa ma3neha Power Gaming (PG)?",
-
     "Chnowa ma3neha Zero Value Of Life (ZVL)?",
-
     "Chnowa ma3neha Vehicle Deathmatching (RVDM)?",
-
     "Chnowa ma3neha Revenge Kill (RK)?",
-
     "Chnowa ma3neha Combat Storing (CS)?",
-
     "Chnowa ma3neha Logging To Avoid (LTA)?"
-
 ];
 
 // ==================================================
@@ -1129,98 +1009,57 @@ const questions = [
 app.post(
     "/api/application",
     async (req, res) => {
-
         try {
-
-            // ==================================================
-            // CHECK LOGIN
-            // ==================================================
-
             const user =
                 getLoggedUser(req);
 
             if (!user) {
-
                 return res
                     .status(401)
                     .json({
-
                         success: false,
-
                         message:
                             "Lezem ta3mel Login with Discord."
-
                     });
-
             }
 
             const answers =
                 req.body.answers ||
                 req.body;
 
-            console.log(
-                "Application received from:",
-                user.username
-            );
-
-            // ==================================================
-            // CHECK QUESTIONS
-            // ==================================================
-
             for (
                 let i = 1;
                 i <= questions.length;
                 i++
             ) {
-
                 const answer =
                     answers["q" + i];
 
                 if (
                     !answer ||
-                    String(answer)
-                        .trim() === ""
+                    String(answer).trim() === ""
                 ) {
-
                     return res
                         .status(400)
                         .json({
-
                             success: false,
-
                             message:
                                 "Lezem tjaweb 3la sou2el " +
                                 i +
                                 "."
-
                         });
-
                 }
-
             }
 
-            // ==================================================
-            // CHECK BOT
-            // ==================================================
-
             if (!bot.isReady()) {
-
                 return res
                     .status(503)
                     .json({
-
                         success: false,
-
                         message:
                             "Discord bot is not ready."
-
                     });
-
             }
-
-            // ==================================================
-            // GET APPLICATION CHANNEL
-            // ==================================================
 
             const channel =
                 await bot.channels.fetch(
@@ -1228,87 +1067,45 @@ app.post(
                 );
 
             if (!channel) {
-
                 throw new Error(
                     "Application channel not found."
                 );
-
             }
 
-            if (
-                !channel.isTextBased()
-            ) {
-
+            if (!channel.isTextBased()) {
                 throw new Error(
                     "Application channel is not a text channel."
                 );
-
             }
-
-            // ==================================================
-            // CREATE EMBED
-            // ==================================================
 
             const embed =
                 new EmbedBuilder()
-
                     .setTitle(
                         "🚔 PD APPLICATION"
                     )
-
                     .setDescription(
-
                         "📋 Nouvelle demande PD\n\n" +
-
                         "👤 Applicant: **" +
-
                         (
                             user.global_name ||
                             user.username
                         ) +
-
                         "**\n\n" +
-
                         "🆔 Discord ID: **" +
                         user.id +
                         "**"
-
                     )
-
-                    .setColor(
-                        0x1769aa
-                    )
-
+                    .setColor(0x1769aa)
                     .setTimestamp();
 
-            // ==================================================
-            // AVATAR
-            // ==================================================
-
             if (user.avatar) {
-
                 embed.setThumbnail(
-
-                    "https://cdn.discordapp.com/avatars/" +
-                    user.id +
-                    "/" +
-                    user.avatar +
-                    ".png"
-
+                    `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
                 );
-
             }
 
-            // ==================================================
-            // QUESTIONS
-            // ==================================================
-
             questions.forEach(
-                (
-                    question,
-                    index
-                ) => {
-
+                (question, index) => {
                     const answer =
                         String(
                             answers[
@@ -1317,118 +1114,63 @@ app.post(
                             ]
                         )
                             .trim()
-                            .slice(
-                                0,
-                                1024
-                            );
+                            .slice(0, 1024);
 
                     embed.addFields({
-
                         name:
-                            (
-                                index + 1
-                            ) +
+                            (index + 1) +
                             ". " +
                             question,
-
                         value:
                             answer ||
                             "Aucune réponse"
-
                     });
-
                 }
             );
-
-            // ==================================================
-            // BUTTONS
-            // ==================================================
 
             const buttons =
                 new ActionRowBuilder()
                     .addComponents(
-
                         new ButtonBuilder()
-
                             .setCustomId(
                                 "pd_accept:" +
                                 user.id
                             )
-
-                            .setLabel(
-                                "ACCEPT"
-                            )
-
-                            .setEmoji(
-                                "✅"
-                            )
-
+                            .setLabel("ACCEPT")
+                            .setEmoji("✅")
                             .setStyle(
                                 ButtonStyle.Success
                             ),
 
                         new ButtonBuilder()
-
                             .setCustomId(
                                 "pd_refuse:" +
                                 user.id
                             )
-
-                            .setLabel(
-                                "REFUSE"
-                            )
-
-                            .setEmoji(
-                                "❌"
-                            )
-
+                            .setLabel("REFUSE")
+                            .setEmoji("❌")
                             .setStyle(
                                 ButtonStyle.Danger
                             )
-
                     );
 
-            // ==================================================
-            // SEND APPLICATION
-            // ==================================================
-
-            const sentMessage =
-                await channel.send({
-
-                    embeds: [
-                        embed
-                    ],
-
-                    components: [
-                        buttons
-                    ]
-
-                });
+            await channel.send({
+                embeds: [embed],
+                components: [buttons]
+            });
 
             console.log(
-                "✅ PD application submitted by " +
-                user.username +
-                " (" +
-                user.id +
-                ")"
-            );
-
-            console.log(
-                "Discord message ID:",
-                sentMessage.id
+                "✅ Application submitted by:",
+                user.username
             );
 
             return res.json({
-
                 success: true,
-
                 message:
                     "Application sent successfully."
-
             });
 
         } catch (error) {
-
             console.error(
                 "❌ Application error:",
                 error
@@ -1437,17 +1179,12 @@ app.post(
             return res
                 .status(500)
                 .json({
-
                     success: false,
-
                     message:
                         error.message ||
                         "Application failed."
-
                 });
-
         }
-
     }
 );
 
@@ -1458,10 +1195,7 @@ app.post(
 bot.on(
     "interactionCreate",
     async (interaction) => {
-
-        if (
-            !interaction.isButton()
-        ) {
+        if (!interaction.isButton()) {
             return;
         }
 
@@ -1473,12 +1207,10 @@ bot.on(
                 "pd_refuse:"
             )
         ) {
-
             return;
         }
 
         try {
-
             const accepted =
                 interaction.customId.startsWith(
                     "pd_accept:"
@@ -1487,38 +1219,30 @@ bot.on(
             const applicantId =
                 interaction.customId.split(":")[1];
 
-            // ==================================================
-            // RESULTS CHANNEL
-            // ==================================================
-
             const resultChannel =
                 await bot.channels.fetch(
                     RESULTS_CHANNEL_ID
                 );
 
             if (!resultChannel) {
+                if (
+                    !interaction.replied &&
+                    !interaction.deferred
+                ) {
+                    await interaction.reply({
+                        content:
+                            "❌ Results channel not found.",
+                        ephemeral: true
+                    });
+                }
 
-                return interaction.reply({
-
-                    content:
-                        "❌ Results channel not found.",
-
-                    ephemeral: true
-
-                });
-
+                return;
             }
 
-            // ==================================================
-            // APPLICANT
-            // ==================================================
-
             const applicant =
-                await bot.users.fetch(
-                    applicantId
-                ).catch(
-                    () => null
-                );
+                await bot.users
+                    .fetch(applicantId)
+                    .catch(() => null);
 
             const applicantName =
                 applicant
@@ -1528,17 +1252,11 @@ bot.on(
                       ")"
                     : applicantId;
 
-            // ==================================================
-            // RESULT
-            // ==================================================
-
             const resultMessage =
                 accepted
-
                     ? "✅ **PD Application ACCEPTED**\n" +
                       "👤 Applicant: " +
                       applicantName
-
                     : "❌ **PD Application REFUSED**\n" +
                       "👤 Applicant: " +
                       applicantName;
@@ -1547,23 +1265,20 @@ bot.on(
                 resultMessage
             );
 
-            // ==================================================
-            // UPDATE BUTTON MESSAGE
-            // ==================================================
-
-            await interaction.update({
-
-                content:
-                    accepted
-                        ? "✅ Application accepted."
-                        : "❌ Application refused.",
-
-                components: []
-
-            });
+            if (
+                !interaction.replied &&
+                !interaction.deferred
+            ) {
+                await interaction.update({
+                    content:
+                        accepted
+                            ? "✅ Application accepted."
+                            : "❌ Application refused.",
+                    components: []
+                });
+            }
 
         } catch (error) {
-
             console.error(
                 "❌ Button interaction error:",
                 error
@@ -1573,115 +1288,87 @@ bot.on(
                 !interaction.replied &&
                 !interaction.deferred
             ) {
-
-                await interaction.reply({
-
-                    content:
-                        "❌ An error occurred.",
-
-                    ephemeral: true
-
-                });
-
+                try {
+                    await interaction.reply({
+                        content:
+                            "❌ An error occurred.",
+                        ephemeral: true
+                    });
+                } catch (replyError) {
+                    console.error(
+                        "Could not reply to interaction:",
+                        replyError
+                    );
+                }
             }
-
         }
-
     }
 );
 
 // ==================================================
-// START WEBSITE LOCALLY
+// START SERVER
 // ==================================================
 
-if (
-    require.main === module
-) {
-
+if (require.main === module) {
     app.listen(
         PORT,
         () => {
-
             console.log(
-                "🌐 Website: http://localhost:" +
-                PORT
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             );
 
+            console.log(
+                "🌐 PD WEBSITE"
+            );
+
+            console.log(
+                `🌐 http://localhost:${PORT}`
+            );
+
+            console.log(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
         }
     );
-
 }
 
 // ==================================================
-// EXPORT APP
+// BOT LOGIN
 // ==================================================
 
-module.exports = app;
+if (BOT_TOKEN) {
+    bot.login(BOT_TOKEN)
+        .then(() => {
+            console.log(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
 
-// ==================================================
-// DISCORD BOT
-// ==================================================
-//
-// IMPORTANT:
-// On Netlify, a Discord.js persistent bot should NOT
-// be kept alive inside the serverless function.
-//
-// So we only start the bot when running locally.
-//
-// ==================================================
+            console.log(
+                "🤖 PD APPLICATION BOT"
+            );
 
-if (
-    BOT_TOKEN &&
-    !IS_NETLIFY
-) {
+            console.log(
+                "✅ Discord bot connected"
+            );
 
-    bot.login(
-        BOT_TOKEN
-    )
-        .then(
-            () => {
-
-                console.log(
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                );
-
-                console.log(
-                    "🤖 PD APPLICATION BOT"
-                );
-
-                console.log(
-                    "✅ Discord bot connected"
-                );
-
-                console.log(
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                );
-
-            }
-        )
-        .catch(
-            (error) => {
-
-                console.error(
-                    "❌ Discord bot login failed:",
-                    error
-                );
-
-            }
-        );
-
-} else if (
-    IS_NETLIFY
-) {
-
-    console.log(
-        "☁️ Netlify mode: Discord bot login disabled."
-    );
-
+            console.log(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            );
+        })
+        .catch((error) => {
+            console.error(
+                "❌ Discord bot login failed:",
+                error
+            );
+        });
 } else {
-
     console.error(
         "❌ DISCORD_BOT_TOKEN is missing."
     );
-
 }
+
+// ==================================================
+// EXPORT
+// ==================================================
+
+module.exports = app;
