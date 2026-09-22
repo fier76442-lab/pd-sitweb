@@ -10,10 +10,15 @@ const {
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    MessageFlags
 } = require("discord.js");
 
 const app = express();
+
 const PORT = process.env.PORT || 3000;
 
 // ==================================================
@@ -468,8 +473,6 @@ app.get(
                     stateData
                 );
 
-            // OAuth state cookie
-            // SameSite=None is important for OAuth callback
             setCookie(
                 res,
                 "pd_oauth_state",
@@ -999,51 +1002,28 @@ app.get(
 
 const questions = [
     "9adech 3omrek fi denya?",
-
     "Chnowa ta3ref 3al PD?",
-
     "9adech men se3a tel3eb fi nhar?",
-
     "Chnowa bch tfidna enti fel PD?",
-
     "3lech 5tart el PD men kol el factions w gangs?",
-
     "3andek 5ebra 9bal fel PD?",
-
     "Chnowa esmek In-Game?",
-
     "Chnowa level mte3ek In-Game?",
-
     "Ken t3areket enti w zamilik, chnowa bch ta3mel?",
-
     "9adech men 3am wala chhar 3andek tel3eb SA-MP?",
-
     "3lech theb tod5el lel PD?",
-
     "Ba3ed barcha 5edma fel PD, chnowa bch ta3mel?",
-
     "Ken wehed jek yheb ya3mel m3ak fight, chnowa bch ta3mel?",
-
     "Ken jbetlo Tazer bech tazih, chnowa bch ta3mel?",
-
     "Chnowa ma3neha RP?",
-
     "Chnowa ma3neha Mass RP?",
-
     "Chnowa ma3neha Force RP?",
-
     "Chnowa ma3neha Team Kill?",
-
     "Chnowa ma3neha Power Gaming (PG)?",
-
     "Chnowa ma3neha Zero Value Of Life (ZVL)?",
-
     "Chnowa ma3neha Vehicle Deathmatching (RVDM)?",
-
     "Chnowa ma3neha Revenge Kill (RK)?",
-
     "Chnowa ma3neha Combat Storing (CS)?",
-
     "Chnowa ma3neha Logging To Avoid (LTA)?"
 ];
 
@@ -1158,14 +1138,12 @@ app.post(
 
                     .setDescription(
                         "📋 Nouvelle demande PD\n\n" +
-
                         "👤 Applicant: **" +
                         (
                             user.global_name ||
                             user.username
                         ) +
                         "**\n\n" +
-
                         "🆔 Discord ID: **" +
                         user.id +
                         "**"
@@ -1270,13 +1248,14 @@ app.post(
             // SEND APPLICATION
             // ------------------------------------------
 
-            await channel.send({
-                embeds: [embed],
+            const sentMessage =
+                await channel.send({
+                    embeds: [embed],
 
-                components: [
-                    buttons
-                ]
-            });
+                    components: [
+                        buttons
+                    ]
+                });
 
             console.log(
                 "================================="
@@ -1299,6 +1278,11 @@ app.post(
             console.log(
                 "Application ID:",
                 applicationId
+            );
+
+            console.log(
+                "Message ID:",
+                sentMessage.id
             );
 
             console.log(
@@ -1335,299 +1319,143 @@ app.post(
 // PROCESSED APPLICATIONS
 // ==================================================
 
-// Prevents double-click / double decision
-// while the bot is running.
+// Prevents double decisions while bot is running.
 
 const processedApplications =
     new Set();
 
 // ==================================================
-// BUTTON INTERACTIONS
+// CREATE DISABLED BUTTON ROW
+// ==================================================
+
+function createDisabledRow(message) {
+    const disabledRow =
+        new ActionRowBuilder();
+
+    for (
+        const row of message.components
+    ) {
+        for (
+            const component of row.components
+        ) {
+            try {
+                disabledRow.addComponents(
+                    ButtonBuilder
+                        .from(component)
+                        .setDisabled(true)
+                );
+            } catch {
+                // Ignore unsupported component
+            }
+        }
+    }
+
+    return disabledRow;
+}
+
+// ==================================================
+// CREATE DECISION MODAL
+// ==================================================
+
+function createDecisionModal(
+    type,
+    applicantId,
+    applicationId,
+    messageId
+) {
+    const isAccept =
+        type === "accept";
+
+    const modal =
+        new ModalBuilder()
+            .setCustomId(
+                `pd_decision:${type}:${applicantId}:${applicationId}:${messageId}`
+            )
+
+            .setTitle(
+                isAccept
+                    ? "Accept PD Application"
+                    : "Reject PD Application"
+            );
+
+    const reasonInput =
+        new TextInputBuilder()
+            .setCustomId(
+                "decision_reason"
+            )
+
+            .setLabel(
+                isAccept
+                    ? "Reason (optional)"
+                    : "Reason for rejection"
+            )
+
+            .setPlaceholder(
+                isAccept
+                    ? "Write a reason if you want..."
+                    : "Please write the reason for rejection..."
+            )
+
+            .setStyle(
+                TextInputStyle.Paragraph
+            )
+
+            .setMaxLength(1000)
+
+            .setRequired(
+                !isAccept
+            );
+
+    const row =
+        new ActionRowBuilder()
+            .addComponents(
+                reasonInput
+            );
+
+    modal.addComponents(row);
+
+    return modal;
+}
+
+// ==================================================
+// BUTTON + MODAL INTERACTIONS
 // ==================================================
 
 bot.on(
     "interactionCreate",
     async (interaction) => {
 
-        if (!interaction.isButton()) {
-            return;
-        }
+        // ==================================================
+        // BUTTON
+        // ==================================================
 
-        // ------------------------------------------
-        // CHECK BUTTON
-        // ------------------------------------------
+        if (interaction.isButton()) {
 
-        const isAccept =
-            interaction.customId.startsWith(
-                "pd_accept:"
-            );
+            const isAccept =
+                interaction.customId.startsWith(
+                    "pd_accept:"
+                );
 
-        const isRefuse =
-            interaction.customId.startsWith(
-                "pd_refuse:"
-            );
-
-        if (
-            !isAccept &&
-            !isRefuse
-        ) {
-            return;
-        }
-
-        try {
-
-            // ------------------------------------------
-            // READ CUSTOM ID
-            // ------------------------------------------
-
-            const parts =
-                interaction.customId.split(":");
-
-            const applicantId =
-                parts[1];
-
-            const applicationId =
-                parts[2];
-
-            if (
-                !applicantId ||
-                !applicationId
-            ) {
-                return;
-            }
-
-            // ------------------------------------------
-            // UNIQUE KEY
-            // ------------------------------------------
-
-            const applicationKey =
-                `${interaction.message.id}:${applicationId}`;
-
-            // ------------------------------------------
-            // ALREADY PROCESSED?
-            // ------------------------------------------
-
-            if (
-                processedApplications.has(
-                    applicationKey
-                )
-            ) {
-
-                if (
-                    !interaction.replied &&
-                    !interaction.deferred
-                ) {
-                    await interaction.reply({
-                        content:
-                            "⚠️ This application has already been processed.",
-
-                        ephemeral: true
-                    });
-                }
-
-                return;
-            }
-
-            // Lock immediately
-            processedApplications.add(
-                applicationKey
-            );
-
-            // ------------------------------------------
-            // GET RESULTS CHANNEL
-            // ------------------------------------------
-
-            const resultChannel =
-                await bot.channels.fetch(
-                    RESULTS_CHANNEL_ID
+            const isRefuse =
+                interaction.customId.startsWith(
+                    "pd_refuse:"
                 );
 
             if (
-                !resultChannel ||
-                !resultChannel.isTextBased()
+                !isAccept &&
+                !isRefuse
             ) {
-
-                processedApplications.delete(
-                    applicationKey
-                );
-
-                if (
-                    !interaction.replied &&
-                    !interaction.deferred
-                ) {
-                    await interaction.reply({
-                        content:
-                            "❌ Results channel not found.",
-
-                        ephemeral: true
-                    });
-                }
-
                 return;
             }
-
-            // ------------------------------------------
-            // GET APPLICANT
-            // ------------------------------------------
-
-            const applicant =
-                await bot.users
-                    .fetch(applicantId)
-                    .catch(
-                        () => null
-                    );
-
-            if (!applicant) {
-
-                processedApplications.delete(
-                    applicationKey
-                );
-
-                if (
-                    !interaction.replied &&
-                    !interaction.deferred
-                ) {
-                    await interaction.reply({
-                        content:
-                            "❌ Applicant not found.",
-
-                        ephemeral: true
-                    });
-                }
-
-                return;
-            }
-
-            // ------------------------------------------
-            // RESULT MESSAGE
-            // ------------------------------------------
-
-            let resultMessage;
-
-            if (isAccept) {
-
-                resultMessage =
-                    `<@${applicantId}> Your Whitelist Application has been accepted ✅ Welcome aboard! , welcome to LSPD 💕 !`;
-
-            } else {
-
-                resultMessage =
-                    `Sorry.. But Your PD application has been rejected.`;
-            }
-
-            // ------------------------------------------
-            // SEND RESULT
-            // ------------------------------------------
-
-            await resultChannel.send({
-                content:
-                    resultMessage
-            });
-
-            // ------------------------------------------
-            // LOG
-            // ------------------------------------------
-
-            if (isAccept) {
-
-                console.log(
-                    "================================="
-                );
-
-                console.log(
-                    "✅ PD APPLICATION ACCEPTED"
-                );
-
-                console.log(
-                    "Applicant:",
-                    applicant.username
-                );
-
-                console.log(
-                    "Discord ID:",
-                    applicantId
-                );
-
-                console.log(
-                    "================================="
-                );
-
-            } else {
-
-                console.log(
-                    "================================="
-                );
-
-                console.log(
-                    "❌ PD APPLICATION REJECTED"
-                );
-
-                console.log(
-                    "Applicant:",
-                    applicant.username
-                );
-
-                console.log(
-                    "Discord ID:",
-                    applicantId
-                );
-
-                console.log(
-                    "================================="
-                );
-            }
-
-            // ------------------------------------------
-            // DISABLE BUTTONS
-            // ------------------------------------------
-
-            const disabledRow =
-                new ActionRowBuilder();
-
-            for (
-                const row of
-                interaction.message.components
-            ) {
-
-                for (
-                    const component of
-                    row.components
-                ) {
-
-                    disabledRow.addComponents(
-                        ButtonBuilder
-                            .from(component)
-                            .setDisabled(true)
-                    );
-                }
-            }
-
-            // ------------------------------------------
-            // UPDATE APPLICATION MESSAGE
-            // ------------------------------------------
-
-            await interaction.update({
-                components: [
-                    disabledRow
-                ]
-            });
-
-        } catch (error) {
-
-            console.error(
-                "❌ Button interaction error:",
-                error
-            );
-
-            // ------------------------------------------
-            // ALLOW RETRY IF ERROR
-            // ------------------------------------------
 
             try {
 
+                // ------------------------------------------
+                // READ CUSTOM ID
+                // ------------------------------------------
+
                 const parts =
-                    interaction.customId
-                        .split(":");
+                    interaction.customId.split(":");
 
                 const applicantId =
                     parts[1];
@@ -1636,43 +1464,531 @@ bot.on(
                     parts[2];
 
                 if (
-                    applicantId &&
-                    applicationId
+                    !applicantId ||
+                    !applicationId
                 ) {
+                    return;
+                }
 
-                    processedApplications.delete(
-                        `${interaction.message.id}:${applicationId}`
+                // ------------------------------------------
+                // UNIQUE KEY
+                // ------------------------------------------
+
+                const applicationKey =
+                    `${interaction.message.id}:${applicationId}`;
+
+                // ------------------------------------------
+                // ALREADY PROCESSED?
+                // ------------------------------------------
+
+                if (
+                    processedApplications.has(
+                        applicationKey
+                    )
+                ) {
+                    return interaction.reply({
+                        content:
+                            "⚠️ This application has already been processed.",
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
+
+                // ------------------------------------------
+                // SHOW MODAL IMMEDIATELY
+                // ------------------------------------------
+
+                const modal =
+                    createDecisionModal(
+                        isAccept
+                            ? "accept"
+                            : "refuse",
+
+                        applicantId,
+
+                        applicationId,
+
+                        interaction.message.id
+                    );
+
+                await interaction.showModal(
+                    modal
+                );
+
+                return;
+
+            } catch (error) {
+
+                console.error(
+                    "❌ Button interaction error:",
+                    error
+                );
+
+                try {
+                    if (
+                        !interaction.replied &&
+                        !interaction.deferred
+                    ) {
+                        await interaction.reply({
+                            content:
+                                "❌ Unable to open the decision form.",
+
+                            flags:
+                                MessageFlags.Ephemeral
+                        });
+                    }
+                } catch {}
+            }
+
+            return;
+        }
+
+        // ==================================================
+        // MODAL SUBMIT
+        // ==================================================
+
+        if (interaction.isModalSubmit()) {
+
+            if (
+                !interaction.customId.startsWith(
+                    "pd_decision:"
+                )
+            ) {
+                return;
+            }
+
+            try {
+
+                // ------------------------------------------
+                // READ MODAL CUSTOM ID
+                // ------------------------------------------
+
+                const parts =
+                    interaction.customId.split(":");
+
+                const decisionType =
+                    parts[1];
+
+                const applicantId =
+                    parts[2];
+
+                const applicationId =
+                    parts[3];
+
+                const messageId =
+                    parts[4];
+
+                const isAccept =
+                    decisionType === "accept";
+
+                if (
+                    !applicantId ||
+                    !applicationId ||
+                    !messageId
+                ) {
+                    return interaction.reply({
+                        content:
+                            "❌ Invalid application data.",
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
+
+                // ------------------------------------------
+                // GET REASON
+                // ------------------------------------------
+
+                const reason =
+                    interaction.fields
+                        .getTextInputValue(
+                            "decision_reason"
+                        )
+                        .trim();
+
+                // ------------------------------------------
+                // REFUSE REASON REQUIRED
+                // ------------------------------------------
+
+                if (
+                    !isAccept &&
+                    !reason
+                ) {
+                    return interaction.reply({
+                        content:
+                            "❌ You must provide a reason for rejecting this application.",
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
+
+                // ------------------------------------------
+                // UNIQUE KEY
+                // ------------------------------------------
+
+                const applicationKey =
+                    `${messageId}:${applicationId}`;
+
+                // ------------------------------------------
+                // CHECK DOUBLE DECISION
+                // ------------------------------------------
+
+                if (
+                    processedApplications.has(
+                        applicationKey
+                    )
+                ) {
+                    return interaction.reply({
+                        content:
+                            "⚠️ This application has already been processed.",
+
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
+
+                // ------------------------------------------
+                // LOCK APPLICATION
+                // ------------------------------------------
+
+                processedApplications.add(
+                    applicationKey
+                );
+
+                // ------------------------------------------
+                // ACKNOWLEDGE MODAL
+                // ------------------------------------------
+
+                await interaction.deferReply({
+                    flags:
+                        MessageFlags.Ephemeral
+                });
+
+                // ------------------------------------------
+                // GET RESULTS CHANNEL
+                // ------------------------------------------
+
+                const resultChannel =
+                    await bot.channels.fetch(
+                        RESULTS_CHANNEL_ID
+                    );
+
+                if (
+                    !resultChannel ||
+                    !resultChannel.isTextBased()
+                ) {
+                    throw new Error(
+                        "Results channel not found."
                     );
                 }
 
-            } catch {}
+                // ------------------------------------------
+                // GET APPLICANT
+                // ------------------------------------------
 
-            // ------------------------------------------
-            // REPLY TO INTERACTION
-            // ------------------------------------------
+                const applicant =
+                    await bot.users
+                        .fetch(applicantId)
+                        .catch(
+                            () => null
+                        );
 
-            if (
-                !interaction.replied &&
-                !interaction.deferred
-            ) {
+                if (!applicant) {
+                    throw new Error(
+                        "Applicant not found."
+                    );
+                }
+
+                // ------------------------------------------
+                // REVIEWER
+                // ------------------------------------------
+
+                const reviewer =
+                    interaction.user;
+
+                const reviewerName =
+                    reviewer.globalName ||
+                    reviewer.username;
+
+                // ------------------------------------------
+                // RESULT EMBED
+                // ------------------------------------------
+
+                const resultEmbed =
+                    new EmbedBuilder()
+                        .setTitle(
+                            isAccept
+                                ? "🟢 WHITELIST APPLICATION"
+                                : "🔴 WHITELIST APPLICATION"
+                        )
+
+                        .setDescription(
+                            isAccept
+                                ? `<@${applicantId}> Your Whitelist Application has been accepted ✅ Welcome aboard! , welcome to LSPD 💕 !`
+                                : "Sorry.. But Your PD application has been rejected."
+                        )
+
+                        .setColor(
+                            isAccept
+                                ? 0x2ecc71
+                                : 0xe74c3c
+                        )
+
+                        .addFields(
+
+                            {
+                                name:
+                                    "👤 Applicant",
+
+                                value:
+                                    `<@${applicantId}>\n\`${applicant.username}\``
+                            },
+
+                            {
+                                name:
+                                    "📋 Status",
+
+                                value:
+                                    isAccept
+                                        ? "Accepted ✅"
+                                        : "Rejected ❌",
+
+                                inline: true
+                            },
+
+                            {
+                                name:
+                                    "👮 Reviewed by",
+
+                                value:
+                                    `<@${reviewer.id}>\n\`${reviewerName}\``,
+
+                                inline: true
+                            },
+
+                            {
+                                name:
+                                    "📝 Reason",
+
+                                value:
+                                    reason ||
+                                    "No reason provided."
+                            }
+                        )
+
+                        .setFooter({
+                            text:
+                                `Application ID: ${applicationId}`
+                        })
+
+                        .setTimestamp();
+
+                // ------------------------------------------
+                // APPLICANT AVATAR
+                // ------------------------------------------
+
+                if (
+                    applicant.displayAvatarURL
+                ) {
+                    resultEmbed.setThumbnail(
+                        applicant.displayAvatarURL({
+                            extension: "png",
+                            size: 128
+                        })
+                    );
+                }
+
+                // ------------------------------------------
+                // SEND RESULT
+                // ------------------------------------------
+
+                await resultChannel.send({
+                    embeds: [
+                        resultEmbed
+                    ]
+                });
+
+                // ------------------------------------------
+                // GET ORIGINAL APPLICATION MESSAGE
+                // ------------------------------------------
+
+                const applicationChannel =
+                    await bot.channels.fetch(
+                        APPLICATION_CHANNEL_ID
+                    );
+
+                if (
+                    applicationChannel &&
+                    applicationChannel.isTextBased()
+                ) {
+
+                    try {
+
+                        const originalMessage =
+                            await applicationChannel.messages.fetch(
+                                messageId
+                            );
+
+                        const disabledRow =
+                            createDisabledRow(
+                                originalMessage
+                            );
+
+                        await originalMessage.edit({
+                            components: [
+                                disabledRow
+                            ]
+                        });
+
+                    } catch (editError) {
+
+                        console.error(
+                            "⚠️ Could not disable application buttons:",
+                            editError
+                        );
+                    }
+                }
+
+                // ------------------------------------------
+                // LOG
+                // ------------------------------------------
+
+                console.log(
+                    "================================="
+                );
+
+                if (isAccept) {
+
+                    console.log(
+                        "✅ PD APPLICATION ACCEPTED"
+                    );
+
+                } else {
+
+                    console.log(
+                        "❌ PD APPLICATION REJECTED"
+                    );
+                }
+
+                console.log(
+                    "Applicant:",
+                    applicant.username
+                );
+
+                console.log(
+                    "Applicant ID:",
+                    applicantId
+                );
+
+                console.log(
+                    "Reviewed by:",
+                    reviewerName
+                );
+
+                console.log(
+                    "Reviewer ID:",
+                    reviewer.id
+                );
+
+                console.log(
+                    "Reason:",
+                    reason ||
+                    "No reason provided."
+                );
+
+                console.log(
+                    "Application ID:",
+                    applicationId
+                );
+
+                console.log(
+                    "================================="
+                );
+
+                // ------------------------------------------
+                // CONFIRM TO STAFF
+                // ------------------------------------------
+
+                await interaction.editReply({
+                    content:
+                        isAccept
+                            ? "✅ Application accepted successfully."
+                            : "❌ Application rejected successfully."
+                });
+
+            } catch (error) {
+
+                console.error(
+                    "❌ Modal decision error:",
+                    error
+                );
+
+                // ------------------------------------------
+                // REMOVE LOCK IF ERROR
+                // ------------------------------------------
 
                 try {
 
-                    await interaction.reply({
-                        content:
-                            "❌ An error occurred while processing this application.",
+                    const parts =
+                        interaction.customId.split(":");
 
-                        ephemeral: true
-                    });
+                    const applicationId =
+                        parts[3];
+
+                    const messageId =
+                        parts[4];
+
+                    if (
+                        applicationId &&
+                        messageId
+                    ) {
+                        processedApplications.delete(
+                            `${messageId}:${applicationId}`
+                        );
+                    }
+
+                } catch {}
+
+                // ------------------------------------------
+                // ERROR RESPONSE
+                // ------------------------------------------
+
+                try {
+
+                    if (
+                        interaction.deferred
+                    ) {
+
+                        await interaction.editReply({
+                            content:
+                                "❌ An error occurred while processing this application."
+                        });
+
+                    } else if (
+                        !interaction.replied
+                    ) {
+
+                        await interaction.reply({
+                            content:
+                                "❌ An error occurred while processing this application.",
+
+                            flags:
+                                MessageFlags.Ephemeral
+                        });
+                    }
 
                 } catch (replyError) {
 
                     console.error(
-                        "Could not reply to interaction:",
+                        "Could not reply to modal interaction:",
                         replyError
                     );
                 }
             }
+
+            return;
         }
     }
 );
@@ -1713,6 +2029,7 @@ if (require.main === module) {
 if (BOT_TOKEN) {
 
     bot.login(BOT_TOKEN)
+
         .then(() => {
 
             console.log(
@@ -1730,7 +2047,6 @@ if (BOT_TOKEN) {
             console.log(
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             );
-
         })
 
         .catch((error) => {
